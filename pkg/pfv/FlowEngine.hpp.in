@@ -348,6 +348,7 @@ class FlowCellInfo_@TEMPLATE_FLOW_NAME@ : public CGT::SimpleCellInfo {
 	int fict;
  	Real volumeVariation;
 	double pression;
+	double saturation2;
 	 //average relative (fluid - facet translation) velocity defined for a single cell as 1/Volume * SUM_ON_FACETS(x_average_facet*average_facet_flow_rate)
 	CVector averageCellVelocity;
 	// Surface vectors of facets, pointing from outside toward inside the cell
@@ -374,7 +375,7 @@ class FlowCellInfo_@TEMPLATE_FLOW_NAME@ : public CGT::SimpleCellInfo {
 		unitForceVectors.resize(4,CGAL::NULL_VECTOR);
 		for (int k=0; k<4;k++) for (int l=0; l<3;l++) solidSurfaces[k][l]=0;
 		rayHydr.resize(4, 0);
-		invSumK=index=volumeSign=s=volumeVariation=pression=invVoidV=fict=0;
+		invSumK=index=volumeSign=s=volumeVariation=pression=saturation2=invVoidV=fict=0;
 		isFictious=false; Pcondition = false; isGhost = false;
 		isvisited = false; 		
 		isGhost=false;
@@ -386,6 +387,8 @@ class FlowCellInfo_@TEMPLATE_FLOW_NAME@ : public CGT::SimpleCellInfo {
 	inline Real& volume (void) {return t;}
 	inline const Real& invVoidVolume (void) const {return invVoidV;}
 	inline Real& invVoidVolume (void) {return invVoidV;}
+	inline const Real& saturation (void) const {return saturation2;}
+	inline Real& saturation (void) {return saturation2;}
 	inline Real& dv (void) {return volumeVariation;}
 	inline int& fictious (void) {return fict;}
 	inline double& p (void) {return pression;}

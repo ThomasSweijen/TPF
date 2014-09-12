@@ -56,6 +56,7 @@ class FlowBoundingSphere : public Network<_Tesselation>
 		
 		void initNewTri () {noCache=true; /*isLinearSystemSet=false; areCellsOrdered=false;*/}//set flags after retriangulation
 		bool permeabilityMap;
+		bool saturationMap;
 
 		bool computeAllCells;//exececute computeHydraulicRadius for all facets and all spheres (double cpu time but needed for now in order to define crossSections correctly)
 		double KOptFactor;
