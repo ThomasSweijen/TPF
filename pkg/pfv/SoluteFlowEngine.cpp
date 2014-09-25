@@ -25,6 +25,8 @@ class SoluteCellInfo : public FlowCellInfo_SoluteFlowEngineT
 	Real bubblePressure2;
 	bool imbibition2;
 	bool networkConnectivity2;
+	bool NnetworkConnectivity2;
+	bool error2;
 	std::vector<bool> liquidbr;
 	
 	
@@ -39,9 +41,12 @@ class SoluteCellInfo : public FlowCellInfo_SoluteFlowEngineT
   	inline const Real& InsideSphereRadius (void) const {return InsideSphereRadius2;}
   	inline bool& imbibition (void) {return imbibition2;} //If imbibition is true, an interface is present within pore body
   	inline const bool& imbibition (void) const {return imbibition2;}
-  	inline bool& networkConnectivity (void) {return networkConnectivity2;} //If imbibition is true, an interface is present within pore body
-  	inline const bool& networkConnectivity (void) const {return networkConnectivity2;}
-  	
+  	inline bool& Wnetwork (void) {return networkConnectivity2;} //If imbibition is true, an interface is present within pore body
+  	inline const bool& Wnetwork (void) const {return networkConnectivity2;}
+  	inline bool& error (void) {return error2;} //If imbibition is true, an interface is present within pore body
+  	inline const bool& error (void) const {return error2;}
+  	inline bool& NWnetwork (void) {return NnetworkConnectivity2;} //If imbibition is true, an interface is present within pore body
+  	inline const bool& NWnetwork (void) const {return NnetworkConnectivity2;}
  	inline void getInfo (const SoluteCellInfo& otherCellInfo) {FlowCellInfo_SoluteFlowEngineT::getInfo(otherCellInfo); saturationTEMP()=otherCellInfo.saturationTEMP();}
 };
 
@@ -53,6 +58,7 @@ class SoluteFlowEngine : public SoluteFlowEngineT
 {
 	public :
 		void getInsideEqSphere();
+		void drainageFunction();
 		void TPFaction();
 		void LiquidBridge();
 		double liquidbridgeCalc(double R1, double R2, double Pc);
@@ -60,10 +66,11 @@ class SoluteFlowEngine : public SoluteFlowEngineT
 		void copySaturationTEMP();
 		void staticIterator();
 		void InitializeScenario();
+		void imbibitionFunction();
 		void InsertBoundaryConditions();
+		void imbibitionPoreFunction();
+		void resetNetwork();
 		void checkConnectivityNetwork();
-		int printConnectivityNetwork();
-		void initializeImbibition();
 		void saveVtk(const char* folder);
 		double getSaturation(unsigned int ID){return solver->T[solver->currentTes].cellHandles[ID]->info().saturation();}
 		double getInscribedRadius(unsigned int ID){return solver->T[solver->currentTes].cellHandles[ID]->info().InsideSphereRadius();}
@@ -85,11 +92,12 @@ class SoluteFlowEngine : public SoluteFlowEngineT
 		((bool,first,true,,"First Calculation? "))
 		((bool,active,true,,"Is something still happening?"))
 		((bool,makeMovie,true,,"Make a movie of the different steps to reach equilibrium?"))
+		((bool,drainage,true,,"Do we have drainage or nor?"))
+		((bool,activeiterator,true,,"Do we have drainage or nor?"))
+		((bool,cornerflow,false,,"Do we have corner flow during imbibition or not?"))
 
 		,,,
 		.def("TPFaction",&SoluteFlowEngine::TPFaction,"Activate Two Phase Flow Engine")
-		.def("printConnectivityNetwork",&SoluteFlowEngine::printConnectivityNetwork,"show non-connected pores")
-		.def("initializeImbibition",&SoluteFlowEngine::initializeImbibition,"Initialize all imbibition bools to false")
 		.def("LiquidBridge",&SoluteFlowEngine::LiquidBridge,"Calculate swelling of liquid bridge")
 		.def("getBulkSaturation",&SoluteFlowEngine::getBulkSaturation,"Activate Two Phase Flow Engine")
 		.def("staticIterator",&SoluteFlowEngine::staticIterator,"Iterator to find eq. in two-phase flow")
@@ -98,6 +106,8 @@ class SoluteFlowEngine : public SoluteFlowEngineT
 		.def("getInsideEqSphere",&SoluteFlowEngine::getInsideEqSphere,"Get equivalent pore volume")
 		.def("InitializeScenario",&SoluteFlowEngine::InitializeScenario,"Reset Initial conditions")
 		.def("InsertBoundaryConditions",&SoluteFlowEngine::InsertBoundaryConditions,"Insert the boundary conditions into vectors.")
+		.def("checkConnectivityNetwork",&SoluteFlowEngine::checkConnectivityNetwork,"Reset Initial conditions")
+
 		
 		)
 };
@@ -105,15 +115,7 @@ REGISTER_SERIALIZABLE(SoluteFlowEngine);
 
 
 // PeriodicFlowEngine::~PeriodicFlowEngine(){}
-void SoluteFlowEngine::LiquidBridge()
-{
-    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
-      for (unsigned i = 0; i < 6; i++){
-	if(cell->info().liquidbridge() [i]){ cerr << "tralalal";}
-	
-      }
-}
-}
+
 
 
 
@@ -130,15 +132,15 @@ void SoluteFlowEngine::TPFaction()
     cout << endl << "Calculate radius of inscribed sphere is done!";
     }
   
-  active = true;
-  
+  activeiterator = true;
+  if(cornerflow == true){resetNetwork();}
   // While loop for calculating equilibrium conditions for a set Pn-Pw, only solved for continuous flow. 
-   while(active){
-  checkConnectivityNetwork();
+   while(activeiterator){
+  if(cornerflow == false){checkConnectivityNetwork();}
   copySaturation();
-  active = false;
-  staticIterator();
+  activeiterator = false;
   InsertBoundaryConditions();
+  staticIterator();
   copySaturationTEMP();
   if(makeMovie){solver->saveVtk("./VTK");}  
   }
@@ -147,12 +149,26 @@ void SoluteFlowEngine::TPFaction()
   
 }
 
+void SoluteFlowEngine::resetNetwork()
+{
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+ 	{
+	 cell->info().Wnetwork() = true;
+	 cell->info().NWnetwork() = true;
+ 	}
+  
+}
+
 void SoluteFlowEngine::InitializeScenario()
 {
   FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
  	{
  	 cell->info().saturationTEMP() = initialWettingSaturation;
+	 cell->info().saturation() = initialWettingSaturation;
 	 cell->info().imbibition() = false;
+	 cell->info().Wnetwork() = true;
+	 cell->info().NWnetwork() = true;
+	 cell->info().error() = false;
  	}
 
 }
@@ -177,140 +193,172 @@ void SoluteFlowEngine::InsertBoundaryConditions()
     }
   
 }
-void SoluteFlowEngine::initializeImbibition()
-{
-    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-    {
-	cell->info().imbibition() = false;
-    }
-}
 
 
-
-void SoluteFlowEngine::copySaturation()
-{	//Copy Saturation list to temporary saturation list to avoid twice movement of a advancing front
-    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-    {
-	cell->info().saturation() = cell->info().saturationTEMP();
-    }
-}
-
-void SoluteFlowEngine::copySaturationTEMP()
-{	//Copy temporary saturation list back to saturation list
-
-    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-    {
-      	if(cell->info().saturation() != cell->info().saturationTEMP()){active = true;}
-	cell->info().saturationTEMP() = cell->info().saturation();
-    }
-}
 
 
 void SoluteFlowEngine::staticIterator()
 {
-	double Rcp = 0.0, throatRadius = 0.0;
-	double CapillaryPressure = 0.0;
-
-	CapillaryPressure = BCPressureNonWettingPhase - BCPressureWettingPhase;
-	CappilaryPressureOverall = CapillaryPressure;
-	Rcp = (2.0*(72.0 / 1000.0)) / CapillaryPressure;
-	
-
-	  
-	 
-	FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-	{	  
-	  
-	  
-	  // (1) Check for pore-body imbibition
-	  if((cell -> info().imbibition() == true) && (cell->info().networkConnectivity() == true)){
-	   if (Rcp >= cell -> info().InsideSphereRadius()){
-	    cell -> info().saturation() = 1.0; //NOTE (thomas): might need to include residual NW-phase
-	   }
-	  }
-	  
-	  
-	  // (2) Check for pore-throat criteria
-	  
-	  if (cell->info().saturation() != 0.0){ //We only look at water saturated pores
-	  
-	  for (unsigned int ngb=0;ngb<4;ngb++)
-	  {
-	  
-	    // check for neigboring pore with NW-saturation, and no imbibition interface
-	    if ((cell -> neighbor(ngb) ->info().saturation() < 1.0) && (cell->info().imbibition() == false)){
-	      if ((cell-> neighbor(ngb) -> info().networkConnectivity() == true) && (cell-> info().networkConnectivity() == true))
-	      {
-	      
-		throatRadius = std::abs(solver->computeHydraulicRadius(cell, ngb));
-		//(a) wetting connectivity, or imbibition of neighboring throat
-		if (throatRadius <= Rcp){
-		  cell -> neighbor(ngb) -> info().saturation() = 0.0; //Although an interface is present in neigboring pore, saturation is zero, residual?
-		  cell -> neighbor(ngb) -> info().imbibition() = true;
-		}
-		//(b) non-wetting connectivity, or drainage of this pore body
-		if (throatRadius > Rcp){
-		  cell -> info().saturation() = 0.0; //residual water saturation, liquid bridge?
-		}
-	  
-	    }
-	    }
-	  
-	  }
-	  }
-	  }
+	if(drainage){drainageFunction();}
+	if(drainage == false){
+	  imbibitionFunction();
+	  imbibitionPoreFunction();
+	}
 } 
 
-int SoluteFlowEngine::printConnectivityNetwork()
+
+void SoluteFlowEngine::drainageFunction()
 {
-  int summ =0;
-  FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-  {
-  if(cell->info().networkConnectivity() == true){
-    cout << endl << "ID "<< cell->info().id << " Saturation "<< cell->info().saturation();
-    summ =summ+1;
-  }  
-  }
+    double Rcp = 0.0, throatRadius = 0.0;
+    double CapillaryPressure = 0.0;
+	CapillaryPressure = BCPressureNonWettingPhase - BCPressureWettingPhase;
+	CappilaryPressureOverall = CapillaryPressure;
+	Rcp = ((72.0 / 1000.0)) / CapillaryPressure;
+	
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+    {
+     if(cell->info().saturation() != 1.0){ 
+     // Cell i is non-wetting saturated wereas the neighbor is water saturated 
+      
+	for (unsigned int ngb=0;ngb<4;ngb++){
+	  if((cell->neighbor(ngb)->info().saturation() == 1.0)&&(cell->neighbor(ngb)->info().Wnetwork() == true)){
+       
+	  throatRadius = solver->computeEffectiveRadius(cell,ngb);
+	  
+	  //std::abs(solver->computeEffectiveRadius(cell, ngb));
+	    if (throatRadius > Rcp){
+		cell -> neighbor(ngb)->info().saturation() = 0.0; //NOTE(Thomas): include residual liquid bridge
+     }
+     }
+     }
+     }
   
-  return summ;
+   }
+
 }
+void SoluteFlowEngine::imbibitionPoreFunction()
+{
+  	double Rcp = 0.0;
+	double CapillaryPressure = 0.0;
+	     CapillaryPressure = BCPressureNonWettingPhase - BCPressureWettingPhase;
+	     CappilaryPressureOverall = CapillaryPressure;
+	     Rcp = ((72.0 / 1000.0)) / CapillaryPressure;
+	     
+	FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+	  if(cell->info().imbibition() == true){
+	    if(Rcp > cell->info().InsideSphereRadius()){
+	      cell->info().imbibition() = false;
+	      cell ->info().saturation() = 1.0; //NOTE(Thomas): include residual liquid bridge
+	      
+	   
+	    
+	    }
+	  }
+	}
+	   
+  
+}
+
+
+
+void SoluteFlowEngine::imbibitionFunction()
+{
+
+	double Rcp = 0.0, throatRadius = 0.0;
+	double CapillaryPressure = 0.0;
+	  CapillaryPressure = BCPressureNonWettingPhase - BCPressureWettingPhase;
+	  CappilaryPressureOverall = CapillaryPressure;
+	  Rcp = ((72.0 / 1000.0)) / CapillaryPressure;
+  
+	  
+	FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+	{
+	    
+	    if((cell->info().saturation() == 1.0)&&(cell->info().imbibition()==false)){ 
+	      // Cell i is wetting saturated wereas the neighbor is non-wetting saturated 
+	      for (unsigned int ngb=0;ngb<4;ngb++){
+		if((cell->neighbor(ngb)->info().saturation() != 1.0) &&(cell->neighbor(ngb)->info().NWnetwork() == true)&&(cell->info().Wnetwork() == true)){
+		  throatRadius =solver->computeEffectiveRadius(cell,ngb);
+		    if (throatRadius <= Rcp){
+		      cell -> neighbor(ngb)->info().imbibition() = true; // A new interface in ngb pore has been created
+   
+     }
+     }
+
+     }
+  
+   }
+	  
+	  
+	  
+  
+}
+}
+
+
+
 
 void SoluteFlowEngine::checkConnectivityNetwork()
 {
-      bool active = true;
-      FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-      {
-	cell -> info().networkConnectivity() = false;
-	for (unsigned int ngb=0;ngb<4;ngb++){ 
-	  if (cell->vertex(ngb)->info().id() == BCIDWettingPhase){
-	    cell->info().networkConnectivity() = true;
-	  }
-	  if (cell->vertex(ngb)->info().id() == BCIDNonWettingPhase){
-	    cell->info().networkConnectivity() = true;
-
-	  }
-	}
-      }
-      
+  bool networkactive;
+  int temp;
+   FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+   {
+     cell->info().NWnetwork() = false;
+     cell->info().Wnetwork() = false;
      
-      
-      while(active == true){
-	active = false;
-	
-	
-      FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-      {
-	if(cell->info().networkConnectivity() == true){
-	  for(unsigned int ngb = 0; ngb < 4; ngb++)
-	  {
-	    if(cell->neighbor(ngb)->info().saturation() == cell->info().saturation())
-	      if ( cell->neighbor(ngb)->info().networkConnectivity() == false){active = true;}
-	      cell->neighbor(ngb)->info().networkConnectivity() = true;
+    //NOTE(Thomas): Check boundary conditions, may be implementen in insertBoundaryConditions
+    for(unsigned vertex=0;vertex<4;vertex++){
+      //NW connectivity
+     if(cell->vertex(vertex)->info().id() ==  BCIDNonWettingPhase)
+     {
+       cell -> info().NWnetwork() = true; 
+     }
+     //W connectivity
+     if(cell->vertex(vertex)->info().id() ==  BCIDWettingPhase)
+     {
+       cell -> info().Wnetwork() = true;
+       
+     }
+    }
+   }
+ 
+    networkactive = true;
+    temp = 0;
+   while(networkactive){
+     networkactive=false;
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+      if(cell -> info().NWnetwork() == true){
+	for(unsigned ngb=0;ngb<4;ngb++){
+	  if(cell->neighbor(ngb)->info().saturation() == 0.0){
+	    networkactive = true;
+	    cell->neighbor(ngb)->info().NWnetwork() = true;
 	  }
 	}
       }
-
+      
+      if(cell -> info().Wnetwork() == true){
+	for(unsigned ngb=0;ngb<4;ngb++){
+	  if(cell->neighbor(ngb)->info().saturation() == 1.0){
+	    networkactive=true;
+	    cell->neighbor(ngb)->info().Wnetwork() = true;
+	  }
+	}
       }
+    }
+    temp = temp+1;
+    if(temp > 2000){networkactive = false;} // put upperlimit for while loop
+    cout << endl << temp;
+   }
+   
+   
+    int Wcount = 0, NWcount = 0;
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+    {
+      if(cell -> info().Wnetwork() == true){Wcount=Wcount+1;}
+      if(cell -> info().NWnetwork() == true){NWcount=NWcount+1;}
+    }
+ cout << "NW " << NWcount << " W "<< Wcount;
 }
 
 
@@ -340,16 +388,33 @@ double SoluteFlowEngine::getBulkSaturation()
        
        
        if (boundary == false){
-       Vt = Vt + (( std::abs(cell->info().volume()) - std::abs(solver->volumeSolidPore(cell) ) ));
+       Vt = Vt + max(0.0,(1.0 / cell->info().invVoidVolume())); //std::abs((( std::abs(cell->info().volume()) - std::abs(solver->volumeSolidPore(cell) ) )));
        if (cell->info().saturation() > 0.0){
-	Vw = Vw +  ((( std::abs(cell->info().volume()) - std::abs(solver->volumeSolidPore(cell) ) ))*cell->info().saturation());
+	Vw = Vw + max(0.0,(1.0*cell->info().saturation() / cell->info().invVoidVolume())); //std::abs((( std::abs(cell->info().volume()) - std::abs(solver->volumeSolidPore(cell) ) )))*cell->info().saturation();
        }
      }
      }
  return (Vw/Vt);  
 }
 
+void SoluteFlowEngine::copySaturation()
+{	//Copy Saturation list to temporary saturation list to avoid twice movement of a advancing front
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+    {
+	cell->info().saturation() = cell->info().saturationTEMP();
+    }
+}
 
+void SoluteFlowEngine::copySaturationTEMP()
+{	//Copy temporary saturation list back to saturation list
+
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
+    {
+      	cell->info().saturationTEMP() = cell->info().saturation();
+      	if(cell->info().saturation() != cell->info().saturationTEMP()){activeiterator = true;}
+
+    }
+}
 
 
 void SoluteFlowEngine::getInsideEqSphere()
@@ -361,6 +426,7 @@ void SoluteFlowEngine::getInsideEqSphere()
       double d01 = 0.0, d02 = 0.0, d03 = 0.0, d12 = 0.0, d13 = 0.0, d23 = 0.0, Rin = 0.0, r0 = 0.0, r1 = 0.0, r2 =0.0, r3 = 0.0;
       bool check = false;
       unsigned int i = 0;
+      double summ = 0.0, count = 0.0;
       
       Eigen::MatrixXd M(6,6);
 
@@ -447,9 +513,9 @@ void SoluteFlowEngine::getInsideEqSphere()
 	i = 0;
 	Rin  = 0.0;
 	check = false;
-	
+	cout << endl << cell -> info().id;
 	while (check == false){
-	Rin = 0.0 + (min(r0,min(r1,min(r2,r3))) / 5000.0)*i;
+	Rin = 0.0 + (min(r0,min(r1,min(r2,r3))) / 1000.0)*i;
 	i = i + 1;
 	
 	M(4,0) = pow((r0+Rin),2);
@@ -462,9 +528,13 @@ void SoluteFlowEngine::getInsideEqSphere()
 	M(3,4) = pow((r3+Rin),2);
 	
 	if (M.determinant() < 0.0){check = true;} //Check whether determinant is negative, if yes, then stop iteration
-	if (Rin > 10.0*min(r0,min(r1,min(r2,r3)))){ // Check for upper limits NOTE if this is used, an error has occured
+	if (Rin > 100.0*min(r0,min(r1,min(r2,r3)))){ // Check for upper limits NOTE if this is used, an error has occured
 	  check = true;
-	  Rin = cell -> neighbor(3) -> info().InsideSphereRadius();
+	  cell -> info().error()=true;
+	  Rin = (cell -> neighbor(0) -> info().InsideSphereRadius() + 
+		cell -> neighbor(1) -> info().InsideSphereRadius() +
+		cell -> neighbor(2) -> info().InsideSphereRadius() +
+		cell -> neighbor(3) -> info().InsideSphereRadius()) / 4.0;
 	  cout << endl << "error with pore " << cell -> info().id;
 	}
 	
@@ -477,46 +547,38 @@ void SoluteFlowEngine::getInsideEqSphere()
 
 
       }
+      
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+   if(cell->info().error() == true){ 
+    summ = 0.0;
+    count = 0;
+    if(cell -> neighbor(0) -> info().error() == false){summ = summ + cell -> neighbor(0) -> info().InsideSphereRadius(); count = count+1.0;}
+    if(cell -> neighbor(1) -> info().error() == false){summ = summ + cell -> neighbor(1) -> info().InsideSphereRadius(); count = count+1.0;}
+    if(cell -> neighbor(2) -> info().error() == false){summ = summ + cell -> neighbor(2) -> info().InsideSphereRadius(); count = count+1.0;}
+    if(cell -> neighbor(3) -> info().error() == false){summ = summ + cell -> neighbor(3) -> info().InsideSphereRadius(); count = count+1.0;}
+    cell -> info().InsideSphereRadius() = summ / count;
+    if (cell -> info().InsideSphereRadius() == 0.0){cell -> info().InsideSphereRadius();}
+     
+     
+   }
   }
-  
-//     double Px = 0.0;
-//     double Py = 0.0;
-//     double Pz = 0.0;
-//     double dx = 0.0;
-//     double dy = 0.0;
-//     double dz = 0.0;
-//     double length1, length2, length3, length4 = 0.0;
-//      FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles)
-//      {
-// 
-// 	
-//     Px = (cell->vertex(0)->point().x() + cell->vertex(1)->point().x() + cell->vertex(2)->point().x() + cell->vertex(3)->point().x()) / 4.0;
-//     Py = (cell->vertex(0)->point().y() + cell->vertex(1)->point().y() + cell->vertex(2)->point().y() + cell->vertex(3)->point().y()) / 4.0;
-//     Pz = (cell->vertex(0)->point().z() + cell->vertex(1)->point().z() + cell->vertex(2)->point().z() + cell->vertex(3)->point().z()) / 4.0;
-//     
-//     for (unsigned int ngb = 0; ngb < 4; ngb ++){
-//       dx = cell->vertex(ngb)->point().x() - Px;
-//       dy = cell->vertex(ngb)->point().y() - Py;
-//       dz = cell->vertex(ngb)->point().z() - Pz;
-//       if (cell ->info().id == 10){cerr << endl << dx << endl << dy << endl << dz;}
-//       if (ngb == 0){ length1 = sqrt(pow(dx,2) + pow(dy,2) + pow(dz,2)) - sqrt(cell->vertex(ngb)->point().weight());}
-//       if (ngb == 1){ length2 = sqrt(pow(dx,2) + pow(dy,2) + pow(dz,2)) - sqrt(cell->vertex(ngb)->point().weight());}
-//       if (ngb == 2){ length3 = sqrt(pow(dx,2) + pow(dy,2) + pow(dz,2)) - sqrt(cell->vertex(ngb)->point().weight());}
-//       if (ngb == 3){ length4 = sqrt(pow(dx,2) + pow(dy,2) + pow(dz,2)) - sqrt(cell->vertex(ngb)->point().weight());}
-//     }
-//      
-//      
-//      cell ->info().InsideSphereRadius() = (length1 + length2 + length3 + length4) / 4.0; 
-//      
-//          if (cell ->info().id == 10){
-// 	   cerr << endl << Px << endl << Py << endl << Pz << endl << length1 << endl << length2 << endl << length3 << endl << length4 << endl << cell ->info().InsideSphereRadius();
-// 	 }
-//       
-//       
-//     }
-//     
-    
 
+      
+      
+  
+    }
+    
+  
+
+void SoluteFlowEngine::LiquidBridge()
+{
+    FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+      for (unsigned i = 0; i < 6; i++){
+	if(cell->info().liquidbridge() [i]){ cerr << "tralalal";}
+	
+      }
+}
+}
 
 
 double SoluteFlowEngine:: liquidbridgeCalc(double R1, double R2, double Pc){

@@ -1112,7 +1112,7 @@ void FlowBoundingSphere<Tesselation>::saveVtk(const char* folder)
 	}
 	vtkfile.end_data();}
 	
-	if (saturationMap){
+	if (true){
 	  	vtkfile.begin_data("Saturation",CELL_DATA,SCALARS,FLOAT);
 		for (FiniteCellsIterator cell = Tri.finite_cells_begin(); cell != Tri.finite_cells_end(); ++cell) {
 		bool isDrawable = cell->info().isReal() && cell->vertex(0)->info().isReal() && cell->vertex(1)->info().isReal() && cell->vertex(2)->info().isReal()  && cell->vertex(3)->info().isReal();
