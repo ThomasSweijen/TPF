@@ -364,7 +364,7 @@ class FlowCellInfo_@TEMPLATE_FLOW_NAME@ : public CGT::SimpleCellInfo {
 	std::vector<double> modulePermeability;
 	// Partial surfaces of spheres in the double-tetrahedron linking two voronoi centers. [i][j] is for sphere facet "i" and sphere facetVertices[i][j]. Last component for 1/sum_surfaces in the facet.doInterpolate
 	double solidSurfaces [4][4];
-
+	
 	FlowCellInfo_@TEMPLATE_FLOW_NAME@ (void)
 	{
 		modulePermeability.resize(4, 0);
