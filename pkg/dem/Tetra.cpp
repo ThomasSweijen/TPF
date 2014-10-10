@@ -513,7 +513,7 @@ bool Ig2_Tetra_Tetra_TTetraSimpleGeom::go(
 	for (int i=0; i<4; i++) {
 		vTemp = se31.position + se31.orientation*shape1->v[i];
 		p1[i] = Point(vTemp[0],vTemp[1],vTemp[2]);
-		vTemp = se32.position + se32.orientation*shape2->v[i];
+		vTemp = se32.position + se32.orientation*shape2->v[i] + shift2;
 		p2[i] = Point(vTemp[0],vTemp[1],vTemp[2]);
 	}
 
@@ -1208,13 +1208,12 @@ Real TetrahedronVolume(const CGAL::Point_3<CGAL::Cartesian<Real> > v[4]) {
 
 
 #ifdef YADE_CGAL
-void Law2_TTetraSimpleGeom_NormPhys_Simple::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
+bool Law2_TTetraSimpleGeom_NormPhys_Simple::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
 	int id1 = contact->getId1(), id2 = contact->getId2();
 	TTetraSimpleGeom* geom= static_cast<TTetraSimpleGeom*>(ig.get());
 	NormPhys* phys = static_cast<NormPhys*>(ip.get());
 	if ( geom->flag == 0 || geom->penetrationVolume <= 0. ) {
-		scene->interactions->requestErase(contact);
-		return;
+		return false;
 	}
 	Real& un=geom->penetrationVolume;
 	phys->normalForce=phys->kn*std::max(un,(Real) 0)*geom->normal;
@@ -1223,6 +1222,7 @@ void Law2_TTetraSimpleGeom_NormPhys_Simple::go(shared_ptr<IGeom>& ig, shared_ptr
 	State* de2 = Body::byId(id2,scene)->state.get();
 	applyForceAtContactPoint(-phys->normalForce, geom->contactPoint, id1, de1->se3.position, id2, de2->se3.position);
 	// TODO periodic
+	return true;
 }
 #endif
 

@@ -1,12 +1,6 @@
 // 2007 © Václav Šmilauer <eudoxos@arcig.cz>
 #include"Shop.hpp"
 
-#include<limits>
-
-#include<boost/filesystem/convenience.hpp>
-#include<boost/tokenizer.hpp>
-#include<boost/tuple/tuple.hpp>
-
 #include<yade/core/Scene.hpp>
 #include<yade/core/Body.hpp>
 #include<yade/core/Interaction.hpp>
@@ -21,12 +15,11 @@
 #include<yade/pkg/dem/ViscoelasticPM.hpp>
 #include<yade/pkg/dem/CapillaryPhys.hpp>
 
-#include<yade/pkg/common/Bo1_Sphere_Aabb.hpp>
-#include<yade/pkg/common/Bo1_Box_Aabb.hpp>
+#include<yade/pkg/common/Bo1_Aabb.hpp>
 #include<yade/pkg/dem/NewtonIntegrator.hpp>
 #include<yade/pkg/dem/Ig2_Sphere_Sphere_ScGeom.hpp>
 #include<yade/pkg/dem/Ig2_Box_Sphere_ScGeom.hpp>
-#include<yade/pkg/dem/Ip2_FrictMat_FrictMat_FrictPhys.hpp>
+#include<yade/pkg/dem/FrictPhys.hpp>
 
 #include<yade/pkg/common/ForceResetter.hpp>
 
@@ -39,6 +32,7 @@
 
 #include<yade/pkg/dem/ScGeom.hpp>
 #include<yade/pkg/dem/FrictPhys.hpp>
+#include<yade/pkg/dem/HertzMindlin.hpp>
 
 #include<yade/pkg/common/Grid.hpp>
 
@@ -341,7 +335,7 @@ void Shop::fabricTensor(Real& Fmean, Matrix3r& fabric, Matrix3r& fabricStrong, M
 	// *** Compute total fabric tensor from the two tensors above ***/
 	Matrix3r fabricTot(Matrix3r::Zero()); 
 	int q(0);
-	if(!count==0){ // compute only if there are some interactions
+	if(!count){ // compute only if there are some interactions
 		q=nStrong*1./count; 
 		fabricTot=(1-q)*fabricWeak+q*fabricStrong;
 	}
@@ -373,7 +367,7 @@ Matrix3r Shop::getStress(Real volume){
 	return stressTensor/volume;
 }
 
-Matrix3r Shop::getCapillaryStress(Real volume){
+Matrix3r Shop::getCapillaryStress(Real volume, bool mindlin){
 	Scene* scene=Omega::instance().getScene().get();
 	if (volume==0) volume = scene->isPeriodic?scene->cell->hSize.determinant():1;
 	Matrix3r stressTensor = Matrix3r::Zero();
@@ -382,10 +376,10 @@ Matrix3r Shop::getCapillaryStress(Real volume){
 		if (!I->isReal()) continue;
 		shared_ptr<Body> b1 = Body::byId(I->getId1(),scene);
 		shared_ptr<Body> b2 = Body::byId(I->getId2(),scene);
-		CapillaryPhys* nsi=YADE_CAST<CapillaryPhys*> ( I->phys.get() );
+		Vector3r fCap = mindlin? YADE_CAST<MindlinCapillaryPhys*> (I->phys.get())->fCap : YADE_CAST<CapillaryPhys*> (I->phys.get())->fCap;
 		Vector3r branch=b1->state->pos -b2->state->pos;
 		if (isPeriodic) branch-= scene->cell->hSize*I->cellDist.cast<Real>();
-		stressTensor += (nsi->fCap)*branch.transpose();
+		stressTensor += fCap*branch.transpose();
 	}
 	return stressTensor/volume;
 }
@@ -463,32 +457,31 @@ void Shop::setContactFriction(Real angleRad){
 	}
 }
 
-void Shop::growParticles(Real multiplier, bool updateMass, bool dynamicOnly, unsigned int discretization)
+void Shop::growParticles(Real multiplier, bool updateMass, bool dynamicOnly)
 {
 	Scene* scene = Omega::instance().getScene().get();
+	const int sphereIdx = Sphere::getClassIndexStatic();
 	FOREACH(const shared_ptr<Body>& b,*scene->bodies){
 		if (dynamicOnly && !b->isDynamic()) continue;
-		int ci=b->shape->getClassIndex();
-		if(b->isClump() || ci==GridNode::getClassIndexStatic() || ci==GridConnection::getClassIndexStatic()) continue;
-		if (updateMass) {b->state->mass*=pow(multiplier,3); b->state->inertia*=pow(multiplier,5);}
-		(YADE_CAST<Sphere*> (b->shape.get()))->radius *= multiplier;
-		// Clump volume variation with homothetic displacement from its center
-		if (b->isClumpMember()) b->state->pos += (multiplier-1) * (b->state->pos - Body::byId(b->clumpId, scene)->state->pos);
-	}
-	FOREACH(const shared_ptr<Body>& b,*scene->bodies){
-		if(b->isClump()){
-			Clump* clumpSt = YADE_CAST<Clump*>(b->shape.get());
-			clumpSt->updateProperties(b, discretization);
+		//We grow only spheres and clumps 
+		if(b->isClump() or sphereIdx == b->shape->getClassIndex()){			
+			if (updateMass) {b->state->mass*=pow(multiplier,3); b->state->inertia*=pow(multiplier,5);}
+			// for clumps we updated inertia, nothing else to do
+			if (b->isClump()) continue;
+			// for spheres, we update radius
+			(YADE_CAST<Sphere*> (b->shape.get()))->radius *= multiplier;
+			// and if they are clump members,clump volume variation with homothetic displacement of all members
+			if (b->isClumpMember()) b->state->pos += (multiplier-1) * (b->state->pos - Body::byId(b->clumpId, scene)->state->pos);
 		}
 	}
 	FOREACH(const shared_ptr<Interaction>& ii, *scene->interactions){
-		int ci=(*(scene->bodies))[ii->getId1()]->shape->getClassIndex();
-		if(ci==GridNode::getClassIndexStatic() || ci==GridConnection::getClassIndexStatic()) continue;
+		int ci1=(*(scene->bodies))[ii->getId1()]->shape->getClassIndex();
+		int ci2=(*(scene->bodies))[ii->getId2()]->shape->getClassIndex();
 		if (ii->isReal()) {
 			GenericSpheresContact* contact = YADE_CAST<GenericSpheresContact*>(ii->geom.get());
-			if (!dynamicOnly || (*(scene->bodies))[ii->getId1()]->isDynamic())
+			if ((!dynamicOnly || (*(scene->bodies))[ii->getId1()]->isDynamic()) && ci1==sphereIdx)
 				contact->refR1 = YADE_CAST<Sphere*>((* (scene->bodies))[ii->getId1()]->shape.get())->radius;
-			if (!dynamicOnly || (*(scene->bodies))[ii->getId2()]->isDynamic())
+			if ((!dynamicOnly || (*(scene->bodies))[ii->getId2()]->isDynamic()) && ci2==sphereIdx)
 				contact->refR2 = YADE_CAST<Sphere*>((* (scene->bodies))[ii->getId2()]->shape.get())->radius;
 			const shared_ptr<FrictPhys>& contactPhysics = YADE_PTR_CAST<FrictPhys>(ii->phys);
 			contactPhysics->kn*=multiplier; contactPhysics->ks*=multiplier;

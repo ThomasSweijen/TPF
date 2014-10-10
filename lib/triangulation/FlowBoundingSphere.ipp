@@ -116,7 +116,7 @@ void FlowBoundingSphere<Tesselation>::averageRelativeCellVelocity()
 		//This is the influx term
 		if (cell->info().Pcondition) cell->info().averageVelocity() = cell->info().averageVelocity() - (totFlowRate)*((Point) cell->info()-CGAL::ORIGIN );
 		//now divide by volume
-		cell->info().averageVelocity() = cell->info().averageVelocity() /abs(cell->info().volume());
+		cell->info().averageVelocity() = cell->info().averageVelocity() /std::abs(cell->info().volume());
 	}
 }
 
@@ -239,7 +239,7 @@ void FlowBoundingSphere<Tesselation>::measurePressureProfile(double WallUpy, dou
 	double pressure = 0.f;
 	int cell=0;
 	for (int i=0; i<captures; i++){
-        for (double Z=min(zMin,zMax); Z<=max(zMin,zMax); Z+=abs(Rz)) {
+        for (double Z=min(zMin,zMax); Z<=max(zMin,zMax); Z+=std::abs(Rz)) {
 		permeameter = Tri.locate(Point(X, Y, Z));
 		pressure+=permeameter->info().p();
 		cell++;
@@ -318,7 +318,7 @@ void FlowBoundingSphere<Tesselation>::computeFacetForcesWithCache(bool onlyCache
 					CVector fluidSurfk = cell->info().facetSurfaces[j]*cell->info().facetFluidSurfacesRatio[j];
 					/// handle fictious vertex since we can get the projected surface easily here
 					if (cell->vertex(j)->info().isFictious) {
-						Real projSurf=abs(Surfk[boundary(cell->vertex(j)->info().id()).coordinate]);
+						Real projSurf=std::abs(Surfk[boundary(cell->vertex(j)->info().id()).coordinate]);
 						tempVect=-projSurf*boundary(cell->vertex(j)->info().id()).normal;
 						cell->vertex(j)->info().forces = cell->vertex(j)->info().forces+tempVect*cell->info().p();
 						//define the cached value for later use with cache*p
@@ -467,6 +467,18 @@ Real FlowBoundingSphere<Tesselation>::checkSphereFacetOverlap(const Sphere& v0, 
 }
 
 template <class Tesselation> 
+void FlowBoundingSphere<Tesselation>::setBlocked(CellHandle& cell)
+{
+	RTriangulation& Tri = T[currentTes].Triangulation();
+	if (cell->info().Pcondition=true) cell->info().p() = 0;
+	else blockedCells.push_back(cell);
+	for (int j=0; j<4; j++) {
+		(cell->info().kNorm())[j]= 0;
+		(cell->neighbor(j)->info().kNorm())[Tri.mirror_index(cell, j)]= 0;}
+}
+
+
+template <class Tesselation> 
 void FlowBoundingSphere<Tesselation>::computePermeability()
 {
 	if (debugOut)  cout << "----Computing_Permeability------" << endl;
@@ -486,6 +498,9 @@ void FlowBoundingSphere<Tesselation>::computePermeability()
 
 	for (VCellIterator cellIt=T[currentTes].cellHandles.begin(); cellIt!=T[currentTes].cellHandles.end(); cellIt++){
 		CellHandle& cell = *cellIt;
+		if (cell->info().blocked) {
+			setBlocked(cell);
+			cell->info().isvisited = !ref;}
 		Point& p1 = cell->info();
 		for (int j=0; j<4; j++) {
 			neighbourCell = cell->neighbor(j);
@@ -504,6 +519,8 @@ void FlowBoundingSphere<Tesselation>::computePermeability()
 				   W[0]->info().isFictious ? 0 : 0.5*v0.weight()*acos((v1-v0)*(v2-v0)/sqrt((v1-v0).squared_length()*(v2-v0).squared_length())),
 				   W[1]->info().isFictious ? 0 : 0.5*v1.weight()*acos((v0-v1)*(v2-v1)/sqrt((v1-v0).squared_length()*(v2-v1).squared_length())),
 				   W[2]->info().isFictious ? 0 : 0.5*v2.weight()*acos((v0-v2)*(v1-v2)/sqrt((v1-v2).squared_length()*(v2-v0).squared_length())));
+				//FIXME: it should be possible to skip completely blocked cells, currently the problem is it segfault for undefined areas
+// 				if (cell->info().blocked) continue;//We don't need permeability for blocked cells, it will be set to zero anyway
 
 				pass+=1;
 				CVector l = p1 - p2;
@@ -526,7 +543,7 @@ void FlowBoundingSphere<Tesselation>::computePermeability()
 					if (S0==0) S0=checkSphereFacetOverlap(v1,v2,v0);
 					if (S0==0) S0=checkSphereFacetOverlap(v2,v0,v1);
 					//take absolute value, since in rare cases the surface can be negative (overlaping spheres)
-					fluidArea=abs(area-crossSections[0]-crossSections[1]-crossSections[2]+S0);
+					fluidArea=std::abs(area-crossSections[0]-crossSections[1]-crossSections[2]+S0);
 					cell->info().facetFluidSurfacesRatio[j]=fluidArea/area;
 					k=(fluidArea * pow(radius,2)) / (8*viscosity*distance);
 					 meanDistance += distance;
@@ -846,7 +863,7 @@ void FlowBoundingSphere<Tesselation>::gaussSeidel(Real dt)
 		int bb=-1;
                 for (FiniteCellsIterator cell = Tri.finite_cells_begin(); cell != cellEnd; cell++) {
 			bb++;
-			if ( !cell->info().Pcondition ) {
+			if ( !cell->info().Pcondition && !cell->info().blocked) {
 		                cell2++;
 		#endif
 				if (compressible && j==0) { previousP[bb]=cell->info().p(); }
@@ -913,7 +930,6 @@ void FlowBoundingSphere<Tesselation>::gaussSeidel(Real dt)
 	} while ((dp_max/p_max) > tolerance /*&& j<4000*/ /*&& ( dp_max > tolerance )*//* &&*/ /*( j<50 )*/);
 	#endif
 	}
-
         if (debugOut) {cout << "pmax " << p_max << "; pmoy : " << p_moy << endl;
         cout << "iteration " << j <<"; erreur : " << dp_max/p_max << endl;}
 	computedOnce=true;
@@ -988,7 +1004,7 @@ double FlowBoundingSphere<Tesselation>::permeameter(double PInf, double PSup, do
         double viscosity = viscosity;
         double gravity = 1;
         double Vdarcy = Q1/Section;
-	double DeltaP = abs(PInf-PSup);
+	double DeltaP = std::abs(PInf-PSup);
 	double DeltaH = DeltaP/ (density*gravity);
 	double k = viscosity*Vdarcy*DeltaY / DeltaP; /**m²**/
 	double Ks = k*(density*gravity)/viscosity; /**m/s**/
@@ -1199,7 +1215,7 @@ double FlowBoundingSphere<Tesselation>::samplePermeability(double& xMin,double& 
         boundary(yMaxId).flowCondition=0;
         boundary(yMinId).value=0;
         boundary(yMaxId).value=1;
-	double pZero = abs((boundary(yMinId).value-boundary(yMaxId).value)/2);
+	double pZero = std::abs((boundary(yMinId).value-boundary(yMaxId).value)/2);
 	initializePressure( pZero );
 	gaussSeidel();
 	const char *kk = "Permeability";
@@ -1228,8 +1244,8 @@ void FlowBoundingSphere<Tesselation>::sliceField(const char *filename)
         double Ry = (yMax-yMin) /intervals;
         double Rz = (zMax-zMin) /intervals;
 	double X=0.5;
-                for (double Y=min(yMax,yMin); Y<=max(yMax,yMin); Y=Y+abs(Ry)) {
-                        for (double Z=min(zMin,zMax); Z<=max(zMin,zMax); Z=Z+abs(Rz)) {
+                for (double Y=min(yMax,yMin); Y<=max(yMax,yMin); Y=Y+std::abs(Ry)) {
+                        for (double Z=min(zMin,zMax); Z<=max(zMin,zMax); Z=Z+std::abs(Rz)) {
 			  permeameter = Tri.locate(Point(X, Y, Z));
 			  consFile << permeameter->info().p() <<" ";
                         }

@@ -15,6 +15,8 @@
 #define FAST
 
 namespace CGT {
+	
+using std::abs;
 
 // 	template<class Tesselation> const double Network<Tesselation>::FAR = 50000;
 	template<class Tesselation> const double Network<Tesselation>::ONE_THIRD = 1.0/3.0;
@@ -557,6 +559,85 @@ void Network<Tesselation>::defineFictiousCells()
 //
 //  return  aire_triangle_spherique;
 // }
+
+template<class Tesselation>
+void Network<Tesselation>::lineSolidPore(CellHandle cell, int j)
+{
+  facetNFictious=detectFacetFictiousVertices(cell,j);
+  double lSolid = 0; //total of solidLine[j][0], solidLine[j][1], solidLine[j][2]. 
+  Sphere v [3];
+  VertexHandle W [3];
+
+  for (int kk=0; kk<3; kk++) {
+	  W[kk] = cell->vertex(facetVertices[j][kk]);
+	  v[kk] = cell->vertex(facetVertices[j][kk])->point();}
+
+  switch (facetNFictious) {
+    case (0) : {
+		VertexHandle& SV1 = W[0];
+		VertexHandle& SV2 = W[1];
+		VertexHandle& SV3 = W[2];
+
+		cell->info().solidLine[j][0]=lineSolidFacet(SV1->point(), SV2->point(), SV3->point());
+		cell->info().solidLine[j][1]=lineSolidFacet(SV2->point(), SV3->point(), SV1->point());
+		cell->info().solidLine[j][2]=lineSolidFacet(SV3->point(), SV1->point(), SV2->point());
+    }; break;
+    case (1) : {
+		VertexHandle SV1 = cell->vertex(facetVertices[j][facetRe1]);
+		VertexHandle SV2 = cell->vertex(facetVertices[j][facetRe2]);
+		VertexHandle SV3 = cell->vertex(facetVertices[j][facetF1]);
+
+		cell->info().solidLine[j][facetRe1]=lineSolidFacet(SV2->point(), SV3->point(), SV1->point());
+		cell->info().solidLine[j][facetRe2]=lineSolidFacet(SV3->point(), SV1->point(), SV2->point());
+
+		Boundary &bi =  boundary(SV3->info().id());
+		double A [3], B[3];
+		for (int m=0;m<3;m++) {A[m]=SV1->point()[m];B[m]= SV2->point()[m];}
+		A[bi.coordinate]=bi.p[bi.coordinate];
+		B[bi.coordinate]=bi.p[bi.coordinate];
+		Point AA(A[0],A[1],A[2]);
+		Point BB(B[0],B[1],B[2]);
+		CVector AB= AA-BB;
+		cell->info().solidLine[j][facetF1]=sqrt(AB.squared_length());
+    }; break;
+     case (2) : {
+		VertexHandle SV1 = cell->vertex(facetVertices[j][facetF1]);
+		VertexHandle SV2 = cell->vertex(facetVertices[j][facetF2]);
+		VertexHandle SV3 = cell->vertex(facetVertices[j][facetRe1]);
+		
+		cell->info().solidLine[j][facetRe1]=0.5*M_PI*sqrt(SV3->point().weight());
+		
+		Boundary &bi1 =  boundary(SV1->info().id());
+		Boundary &bi2 =  boundary(SV2->info().id());
+		
+		double d13 = bi1.p[bi1.coordinate] - (SV3->point())[bi1.coordinate];
+		double d23 = bi2.p[bi2.coordinate] - (SV3->point())[bi2.coordinate];
+		cell->info().solidLine[j][facetF1]= abs(d23); 
+		cell->info().solidLine[j][facetF2]= abs(d13);
+    }; break;
+    }
+
+    lSolid = cell->info().solidLine[j][0] + cell->info().solidLine[j][1] + cell->info().solidLine[j][2];
+    if (lSolid)
+	cell->info().solidLine[j][3]=1.0/lSolid;
+    else cell->info().solidLine[j][3]=0;
+}
+template<class Tesselation>
+double Network<Tesselation>::lineSolidFacet(Sphere ST1, Sphere ST2, Sphere ST3)
+{
+        double line;
+        double squaredRadius = ST1.weight();
+        CVector v12 = ST2.point() - ST1.point();
+        CVector v13 = ST3.point() - ST1.point();
+
+        double norme12 =  v12.squared_length();
+        double norme13 =  v13.squared_length();
+
+        double cosA = v12*v13 / (sqrt(norme13 * norme12));
+        line = acos(cosA) * sqrt(squaredRadius);
+        return line;
+}
+
 } //namespace CGT
 
 #endif //FLOW_ENGINE

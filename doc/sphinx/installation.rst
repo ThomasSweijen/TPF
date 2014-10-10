@@ -90,8 +90,7 @@ management (install the ``git`` package in your distribution and create a GitHub
 
 		git clone git@github.com:yade/trunk.git
 
-will download the whole code repository of ``trunk``. Check out `Yade on github
-<https://www.yade-dem.org/wiki/Yade_on_github>`_ wiki page for more.
+will download the whole code repository of ``trunk``. Check out :ref:`yade-github-label` for more.
 
 Alternatively, a read-only checkout is possible via https without a GitHub account (easier if you don't want to modify the main Yade branch)::
 
@@ -179,12 +178,12 @@ Compilation
 ^^^^^^^^^^^
 
 You should create a separate build-place-folder, where Yade will be configured 
-and where the source code will be compiled. Here is an example for a folderstructure:
+and where the source code will be compiled. Here is an example for a folder structure::
 
-    myYade/           ## base directory
-            trunk/      ## folder for sourcecode in which you use github
-            build/      ## folder in which sources will be compiled; build-directory; use cmake here
-            install/    ## installfolder
+	myYade/       		## base directory
+		trunk/		## folder for sourcecode in which you use github
+		build/		## folder in which sources will be compiled; build-directory; use cmake here
+		install/	## install folder
 
 Then inside this build-directory you should start cmake to configure the compilation process::
 
@@ -192,7 +191,7 @@ Then inside this build-directory you should start cmake to configure the compila
 
 For the folder structure given above call the following command in folder "build":
 
-    cmake -DINSTALL_PREFIX=../install ../trunk
+	cmake -DINSTALL_PREFIX=../install ../trunk
 
 Additional options can be configured in the same line with the following 
 syntax::
@@ -227,19 +226,22 @@ and disabled options. Then start the standard the compilation process::
 
 	make
 
-Installing performs with the following command::
-
-	make install
-
-The "install" command will in fact also recompile if source files have been modified. 
-Hence there is no absolute need to type the two commands separately.
-
 The compilation process can take a long time, be patient. An additional
 parameter on many cores systems ``-j`` can be added to decrease compilation time
 and split the compilation on many cores. For example, on 4-core machines
 it would be reasonable to set the parameter ``-j4``. Note, the Yade requires
 approximately 2GB/core for compilation, otherwise the swap-file will be used
-and a compilation time dramatically increases. After compilation finished successfully
+and a compilation time dramatically increases.
+
+Installing performs with the following command::
+
+	make install
+
+The "install" command will in fact also recompile if source files have been modified. 
+Hence there is no absolute need to type the two commands separately. You may receive make errors if you don't permission to write into the target folder.
+These errors are not critical but without writing permissions Yade won't be installed in /usr/local/bin/.
+
+After compilation finished successfully
 the new built can be started by navigating to /path/to/installfolder/bin and calling yade via (based on version yade-2014-02-20.git-a7048f4)::
     
     cd /path/to/installfolder/bin 
@@ -247,7 +249,7 @@ the new built can be started by navigating to /path/to/installfolder/bin and cal
 
 For building the documentation you should at first execute the command "make install"
 and then "make doc" to build it. The generated files will be stored in your current
-build directory/doc/sphinx/_build.
+build directory/doc/sphinx/_build. Once again writing permissions are necessary for installing into /usr/local/share/doc/.
 
 "make manpage" command generates and moves manpages in a standard place.
 "make check" command executes standard test to check the functionality of compiled program.

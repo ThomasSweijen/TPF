@@ -1,9 +1,6 @@
 // 2007 © Václav Šmilauer <eudoxos@arcig.cz>
 #include"Shop.hpp"
-
-#include<boost/filesystem/convenience.hpp>
 #include<boost/tokenizer.hpp>
-#include<boost/tuple/tuple.hpp>
 
 #include"yade/core/Scene.hpp"
 #include"yade/core/Body.hpp"
@@ -19,12 +16,11 @@
 #include"yade/pkg/dem/ViscoelasticPM.hpp"
 #include"yade/pkg/dem/CapillaryPhys.hpp"
 
-#include"yade/pkg/common/Bo1_Sphere_Aabb.hpp"
-#include"yade/pkg/common/Bo1_Box_Aabb.hpp"
+#include"yade/pkg/common/Bo1_Aabb.hpp"
 #include"yade/pkg/dem/NewtonIntegrator.hpp"
 #include"yade/pkg/dem/Ig2_Sphere_Sphere_ScGeom.hpp"
 #include"yade/pkg/dem/Ig2_Box_Sphere_ScGeom.hpp"
-#include"yade/pkg/dem/Ip2_FrictMat_FrictMat_FrictPhys.hpp"
+#include"yade/pkg/dem/FrictPhys.hpp"
 
 #include"yade/pkg/common/ForceResetter.hpp"
 
@@ -45,6 +41,9 @@
 #ifdef YADE_OPENGL
 	#include"yade/pkg/common/Gl1_NormPhys.hpp"
 #endif
+
+#include"yade/py/_utils.cpp"
+
 
 CREATE_LOGGER(Shop);
 
@@ -324,8 +323,12 @@ Real Shop::getPorosity(const shared_ptr<Scene>& _scene, Real _volume){
 	const shared_ptr<Scene> scene=(_scene?_scene:Omega::instance().getScene());
 	Real V;
 	if(!scene->isPeriodic){
-		if(_volume<=0) throw std::invalid_argument("utils.porosity must be given (positive) *volume* for aperiodic simulations.");
-		V=_volume;
+		if(_volume<=0){// throw std::invalid_argument("utils.porosity must be given (positive) *volume* for aperiodic simulations.");
+		  py::tuple extrema = aabbExtrema(); //aabbExtrema() defined in _utils.cpp
+		  V = py::extract<Real>( (extrema[1][0] - extrema[0][0])*(extrema[1][1] - extrema[0][1])*(extrema[1][2] - extrema[0][2]) );
+		}
+		else
+		  V=_volume;
 	} else {
 		V=scene->cell->getVolume();
 	}

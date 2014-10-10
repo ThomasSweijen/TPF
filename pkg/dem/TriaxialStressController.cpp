@@ -15,6 +15,12 @@
 #include<assert.h>
 #include<yade/core/Scene.hpp>
 #include<yade/pkg/dem/Shop.hpp>
+#include<yade/core/Clump.hpp>
+
+#ifdef FLOW_ENGINE
+//#include<yade/pkg/pfv/FlowEngine.hpp>
+#include "FlowEngine_FlowEngineT.hpp"
+#endif
 
 CREATE_LOGGER(TriaxialStressController);
 YADE_PLUGIN((TriaxialStressController));
@@ -31,8 +37,17 @@ Vector3r TriaxialStressController::getStrainRate() {
 	);
 }
 
-void TriaxialStressController::updateStiffness ()
-{
+void TriaxialStressController::updateStiffness() {
+	Real fluidStiffness = 0.;
+	#ifdef FLOW_ENGINE
+	FOREACH(const shared_ptr<Engine> e, Omega::instance().getScene()->engines) {
+		if (e->getClassName() == "FlowEngine") {
+			TemplateFlowEngine_FlowEngineT<FlowCellInfo_FlowEngineT,FlowVertexInfo_FlowEngineT>* flow = 
+			dynamic_cast<TemplateFlowEngine_FlowEngineT<FlowCellInfo_FlowEngineT,FlowVertexInfo_FlowEngineT>*>(e.get());
+			if ( (flow->fluidBulkModulus > 0) && (!(flow->dead)) ) fluidStiffness = flow->fluidBulkModulus/porosity;
+		}
+	}
+	#endif
 	for (int i=0; i<6; ++i) stiffness[i] = 0;
 	InteractionContainer::iterator ii    = scene->interactions->begin();
 	InteractionContainer::iterator iiEnd = scene->interactions->end();
@@ -45,11 +60,18 @@ void TriaxialStressController::updateStiffness ()
 			int id1 = contact->getId1(), id2 = contact->getId2();
 			for (int index=0; index<6; ++index) if ( wall_id[index]==id1 || wall_id[index]==id2 )
 			{
-				FrictPhys* currentContactPhysics =
-				static_cast<FrictPhys*> ( contact->phys.get() );
-				stiffness[index]  += currentContactPhysics->kn;
+				FrictPhys* currentContactPhysics = static_cast<FrictPhys*> ( contact->phys.get() );
+				stiffness[index] += currentContactPhysics->kn;
 			}
 		}
+	}
+	if (fluidStiffness > 0) {
+		stiffness[0] += fluidStiffness*width*depth/height;
+		stiffness[1] += fluidStiffness*width*depth/height;
+		stiffness[2] += fluidStiffness*height*depth/width;
+		stiffness[3] += fluidStiffness*height*depth/width;
+		stiffness[4] += fluidStiffness*width*height/depth;
+		stiffness[5] += fluidStiffness*width*height/depth;
 	}
 }
 
@@ -102,26 +124,31 @@ void TriaxialStressController::action()
 	depth = p_front->se3.position.z() - p_back->se3.position.z() - thickness;
 
 	boxVolume = height * width * depth;
-	if (first) {
+	if ( (first) || (updatePorosity) ) {
 		BodyContainer::iterator bi = scene->bodies->begin();
 		BodyContainer::iterator biEnd = scene->bodies->end();
-		spheresVolume = 0;
-		for ( ; bi!=biEnd; ++bi )
-		{
-			if((*bi)->isClump()) continue;
+
+		particlesVolume = 0;
+		for ( ; bi!=biEnd; ++bi ) {
 			const shared_ptr<Body>& b = *bi;
-			if ( b->isDynamic() || b->isClumpMember() ) {
+			if (b->isClump()) {
+				const shared_ptr<Clump>& clump = YADE_PTR_CAST<Clump>(b->shape);
+				const shared_ptr<Body>& member = Body::byId(clump->members.begin()->first,scene);
+				particlesVolume += b->state->mass / member->material->density;
+			}
+			else if (b->isDynamic() && !b->isClumpMember()) {
 				const shared_ptr<Sphere>& sphere = YADE_PTR_CAST<Sphere> ( b->shape );
-				spheresVolume += 1.3333333*Mathr::PI*pow ( sphere->radius, 3 );
+				particlesVolume += 1.3333333*Mathr::PI*pow ( sphere->radius, 3 );
 			}
 		}
 		first = false;
+		updatePorosity = false;
 	}
 	max_vel1=3 * width /(height+width+depth)*max_vel;
 	max_vel2=3 * height /(height+width+depth)*max_vel;
 	max_vel3 =3 * depth /(height+width+depth)*max_vel;
 
-	porosity = ( boxVolume - spheresVolume ) /boxVolume;
+	porosity = ( boxVolume - particlesVolume ) /boxVolume;
 	position_top = p_top->se3.position.y();
 	position_bottom = p_bottom->se3.position.y();
 	position_right = p_right->se3.position.x();
@@ -229,33 +256,8 @@ void TriaxialStressController::computeStressStrain()
 
 void TriaxialStressController::controlInternalStress ( Real multiplier )
 {
-	spheresVolume *= pow ( multiplier,3 );
-	BodyContainer::iterator bi    = scene->bodies->begin();
-	BodyContainer::iterator biEnd = scene->bodies->end();
-	for ( ; bi!=biEnd ; ++bi )
-	{
-		if ( ( *bi )->isDynamic() )
-		{
-			( static_cast<Sphere*> ( ( *bi )->shape.get() ) )->radius *= multiplier;
-				(*bi)->state->mass*=pow(multiplier,3);
-				(*bi)->state->inertia*=pow(multiplier,5);
-
-		}
-	}
-	InteractionContainer::iterator ii    = scene->interactions->begin();
-	InteractionContainer::iterator iiEnd = scene->interactions->end();
-	for (; ii!=iiEnd ; ++ii)
-	{
-		if ((*ii)->isReal()) {
-			ScGeom* contact = static_cast<ScGeom*>((*ii)->geom.get());
-			if ((*(scene->bodies))[(*ii)->getId1()]->isDynamic())
-				contact->radius1 = static_cast<Sphere*>((* (scene->bodies))[(*ii)->getId1()]->shape.get())->radius;
-			if ((* (scene->bodies))[(*ii)->getId2()]->isDynamic())
-				contact->radius2 = static_cast<Sphere*>((* (scene->bodies))[(*ii)->getId2()]->shape.get())->radius;
-			const shared_ptr<FrictPhys>& contactPhysics = YADE_PTR_CAST<FrictPhys>((*ii)->phys);
-			contactPhysics->kn*=multiplier; contactPhysics->ks*=multiplier;
-		}
-	}
+	particlesVolume *= pow ( multiplier,3 );
+	Shop::growParticles(multiplier,true,true);
 }
 
 /*!

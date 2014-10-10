@@ -86,6 +86,9 @@ class Network
 		double surfaceSolidDoubleFictiousFacet(VertexHandle SV1, VertexHandle SV2, VertexHandle SV3);
 		double surfaceSolidFacet(Sphere ST1, Sphere ST2, Sphere ST3);
 
+		void lineSolidPore(CellHandle cell, int j);
+		double lineSolidFacet(Sphere ST1, Sphere ST2, Sphere ST3);
+
 		int facetF1, facetF2, facetRe1, facetRe2, facetRe3;
 		int facetNFictious;
 		double FAR;

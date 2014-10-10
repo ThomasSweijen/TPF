@@ -13,7 +13,7 @@
 
 #define _USE_MATH_DEFINES
 
-YADE_PLUGIN(/* self-contained in hpp: */ (Polyhedra) (PolyhedraGeom) (Bo1_Polyhedra_Aabb) (PolyhedraPhys) (PolyhedraMat) (Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys) (PolyhedraVolumetricLaw)
+YADE_PLUGIN(/* self-contained in hpp: */ (Polyhedra) (PolyhedraGeom) (Bo1_Polyhedra_Aabb) (PolyhedraPhys) (PolyhedraMat) (Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys) (Law2_PolyhedraGeom_PolyhedraPhys_Volumetric)
 	/* some code in cpp (this file): */ 
 	#ifdef YADE_OPENGL
 		(Gl1_Polyhedra) (Gl1_PolyhedraGeom) (Gl1_PolyhedraPhys)
@@ -220,6 +220,7 @@ void Polyhedra::GenerateRandomGeometry(){
 	}
 }
 
+
 //****************************************************************************************
 /* Destructor */
 
@@ -395,9 +396,9 @@ void Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys::go( const shared_ptr<Material>
 
 //**************************************************************************************
 #if 1
-Real PolyhedraVolumetricLaw::getPlasticDissipation() {return (Real) plasticDissipation;}
-void PolyhedraVolumetricLaw::initPlasticDissipation(Real initVal) {plasticDissipation.reset(); plasticDissipation+=initVal;}
-Real PolyhedraVolumetricLaw::elasticEnergy()
+Real Law2_PolyhedraGeom_PolyhedraPhys_Volumetric::getPlasticDissipation() {return (Real) plasticDissipation;}
+void Law2_PolyhedraGeom_PolyhedraPhys_Volumetric::initPlasticDissipation(Real initVal) {plasticDissipation.reset(); plasticDissipation+=initVal;}
+Real Law2_PolyhedraGeom_PolyhedraPhys_Volumetric::elasticEnergy()
 {
 	Real energy=0;
 	FOREACH(const shared_ptr<Interaction>& I, *scene->interactions){
@@ -413,25 +414,24 @@ Real PolyhedraVolumetricLaw::elasticEnergy()
 
 //**************************************************************************************
 // Apply forces on polyhedrons in collision based on geometric configuration
-void PolyhedraVolumetricLaw::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* I){
+bool Law2_PolyhedraGeom_PolyhedraPhys_Volumetric::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* I){
 
-		if (!I->geom) {return;} 
+		if (!I->geom) {return true;} 
 		const shared_ptr<PolyhedraGeom>& contactGeom(YADE_PTR_DYN_CAST<PolyhedraGeom>(I->geom));
-		if(!contactGeom) {return;} 
+		if(!contactGeom) {return true;} 
 		const Body::id_t idA=I->getId1(), idB=I->getId2();
 		const shared_ptr<Body>& A=Body::byId(idA), B=Body::byId(idB);
 
 		PolyhedraPhys* phys = dynamic_cast<PolyhedraPhys*>(I->phys.get());	
 
 		//erase the interaction when aAbB shows separation, otherwise keep it to be able to store previous separating plane for fast detection of separation 
-		if (A->bound->min[0] >= B->bound->max[0] || B->bound->min[0] >= A->bound->max[0] || A->bound->min[1] >= B->bound->max[1] || B->bound->min[1] >= A->bound->max[1] || A->bound->min[2] >= B->bound->max[2] || B->bound->min[2] >= A->bound->max[2])  {
-			scene->interactions->requestErase(I);
-			phys->normalForce = Vector3r(0.,0.,0.); phys->shearForce = Vector3r(0.,0.,0.);
-			return;
+		Vector3r shift2=scene->cell->hSize*I->cellDist.cast<Real>();
+		if (A->bound->min[0] >= B->bound->max[0]+shift2[0] || B->bound->min[0]+shift2[0] >= A->bound->max[0] || A->bound->min[1] >= B->bound->max[1]+shift2[1] || B->bound->min[1]+shift2[1] >= A->bound->max[1] || A->bound->min[2] >= B->bound->max[2]+shift2[2] || B->bound->min[2]+shift2[2] >= A->bound->max[2])  {
+			return false;
 		}
 			
 		//zero penetration depth means no interaction force
-		if(!(contactGeom->equivalentPenetrationDepth > 1E-18) || !(contactGeom->penetrationVolume > 0)) {phys->normalForce = Vector3r(0.,0.,0.); phys->shearForce = Vector3r(0.,0.,0.); return;} 
+		if(!(contactGeom->equivalentPenetrationDepth > 1E-18) || !(contactGeom->penetrationVolume > 0)) {phys->normalForce = Vector3r(0.,0.,0.); phys->shearForce = Vector3r(0.,0.,0.); return true;} 
 		Vector3r normalForce=contactGeom->normal*contactGeom->penetrationVolume*phys->kn;
 
 		//shear force: in case the polyhdras are separated and come to contact again, one should not use the previous shear force
@@ -491,6 +491,7 @@ void PolyhedraVolumetricLaw::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, In
 		//needed to be able to acces interaction forces in other parts of yade
 		phys->normalForce = normalForce;
 		phys->shearForce = shearForce;
+		return true;
 }
 
 #endif // YADE_CGAL

@@ -237,24 +237,24 @@ bool Ig2_Sphere_GridConnection_ScGridCoGeom::go(	const shared_ptr<Shape>& cm1,
 				}
 				Real relPosPrev = (branch.dot(segtPrev))/(segtPrev.norm()*segtPrev.norm());
 				// ... and check whether the sphere projection is before the neighbours connections too.
-				const shared_ptr<Interaction> intr = scene->interactions->find(c->id1,gridNo1->ConnList[i]->getId());
 				if(relPosPrev<=0){ //if the sphere projection is outside both the current Connection AND this neighbouring connection, then create the interaction if the neighbour did not already do it before.
 					const shared_ptr<Interaction> intr = scene->interactions->find(c->id1,gridNo1->ConnList[i]->getId());
 					if(intr && intr->isReal()){
 						shared_ptr<ScGridCoGeom> intrGeom=YADE_PTR_CAST<ScGridCoGeom>(intr->geom);
-						if(!intrGeom->isDuplicate==1){ //skip contact.
-							if (isNew) {return false;}
-							else {scm->isDuplicate=1;}/*cout<<"Declare "<<c->id1<<"-"<<c->id2<<" as duplicated."<<endl;*/
+						if(!(intrGeom->isDuplicate==1)){ //skip contact.
+							if (isNew) return false;
+							else {scm->isDuplicate=1;/*cout<<"Declare "<<c->id1<<"-"<<c->id2<<" as duplicated."<<endl;*/}
 						}
 					}
 				}
 				else{//the sphere projection is outside the current Connection but inside the previous neighbour. The contact has to be handled by the Prev GridConnection, not here.
 					if (isNew)return false;
 					else {
-						//cout<<"The contact "<<c->id1<<"-"<<c->id2<<" HAVE to be copied and deleted NOW."<<endl ;
+// 						cout<<"The contact "<<c->id1<<"-"<<c->id2<<" may be copied and will be deleted now."<<endl ;
 						scm->isDuplicate=1;
 						scm->trueInt=-1;
-						return true;}
+						return true;
+					}
 				}
 			}
 		}
@@ -277,24 +277,26 @@ bool Ig2_Sphere_GridConnection_ScGridCoGeom::go(	const shared_ptr<Shape>& cm1,
 					const shared_ptr<Interaction> intr = scene->interactions->find(c->id1,gridNo2->ConnList[i]->getId());
 					if(intr && intr->isReal()){
 						shared_ptr<ScGridCoGeom> intrGeom=YADE_PTR_CAST<ScGridCoGeom>(intr->geom);
-						if(!intrGeom->isDuplicate==1){
+						if(!(intrGeom->isDuplicate==1)){
 							if (isNew) return false;
-							else scm->isDuplicate=1;/*cout<<"Declare "<<c->id1<<"-"<<c->id2<<" as duplicated."<<endl;*/
+							else {scm->isDuplicate=1;/*cout<<"Declare "<<c->id1<<"-"<<c->id2<<" as duplicated."<<endl;*/}
 						}
-					}
+ 					}
 				}
 				else{//the sphere projection is outside the current Connection but inside the previous neighbour. The contact has to be handled by the Prev GridConnection, not here.
 					if (isNew)return false;
-					else {//cout<<"The contact "<<c->id1<<"-"<<c->id2<<" HAVE to be copied and deleted NOW."<<endl ;
+					else {
+// 						cout<<"The contact "<<c->id1<<"-"<<c->id2<<" may be copied and will be deleted now."<<endl ;
 						scm->isDuplicate=1 ;
 						scm->trueInt=-1 ;
-						return true;}
+						return true;
+					}
 				}
 			}
 		}
 	}
 	
-	else if (isNew && relPos<=0.5){
+	else if (relPos<=0.5){
 		if(gridNo1->ConnList.size()>1){//	if the node is not an extremity of the Grid (only one connection)
 			for(int unsigned i=0;i<gridNo1->ConnList.size();i++){	// ... loop on all the Connections of the same Node ...
 				GridConnection* GC = (GridConnection*)gridNo1->ConnList[i]->shape.get();
@@ -309,11 +311,13 @@ bool Ig2_Sphere_GridConnection_ScGridCoGeom::go(	const shared_ptr<Shape>& cm1,
 				if(relPosPrev<=0){ //the sphere projection is inside the current Connection and outide this neighbour connection.
 					const shared_ptr<Interaction> intr = scene->interactions->find(c->id1,gridNo1->ConnList[i]->getId());
 					if( intr && intr->isReal() ){// if an ineraction exist between the sphere and the previous connection, import parameters.
-						//cout<<"Copying contact geom and phys from "<<intr->id1<<"-"<<intr->id2<<" to here ("<<c->id1<<"-"<<c->id2<<")"<<endl;
 						scm=YADE_PTR_CAST<ScGridCoGeom>(intr->geom);
-						c->geom=scm;
-						c->phys=intr->phys;
-						c->iterMadeReal=intr->iterMadeReal;
+						if(isNew){
+// 							cout<<"Copying contact geom and phys from "<<intr->id1<<"-"<<intr->id2<<" to here ("<<c->id1<<"-"<<c->id2<<")"<<endl;
+							c->geom=scm;
+							c->phys=intr->phys;
+							c->iterMadeReal=intr->iterMadeReal;
+						}
 						scm->trueInt=c->id2;
 						scm->isDuplicate=2;	//command the old contact deletion.
 						isNew=0;
@@ -324,7 +328,7 @@ bool Ig2_Sphere_GridConnection_ScGridCoGeom::go(	const shared_ptr<Shape>& cm1,
 		}
 	}
 	
-	else if (isNew && relPos>0.5){
+	else if (relPos>0.5){
 		if(gridNo2->ConnList.size()>1){
 			for(int unsigned i=0;i<gridNo2->ConnList.size();i++){
 				GridConnection* GC = (GridConnection*)gridNo2->ConnList[i]->shape.get();
@@ -339,11 +343,13 @@ bool Ig2_Sphere_GridConnection_ScGridCoGeom::go(	const shared_ptr<Shape>& cm1,
 				if(relPosNext<=0){ //the sphere projection is inside the current Connection and outide this neighbour connection.
 					const shared_ptr<Interaction> intr = scene->interactions->find(c->id1,gridNo2->ConnList[i]->getId());
 					if( intr && intr->isReal() ){// if an ineraction exist between the sphere and the previous connection, import parameters.
-						//cout<<"Copying contact geom and phys from "<<intr->id1<<"-"<<intr->id2<<" to here ("<<c->id1<<"-"<<c->id2<<")"<<endl;
 						scm=YADE_PTR_CAST<ScGridCoGeom>(intr->geom);
-						c->geom=scm;
-						c->phys=intr->phys;
-						c->iterMadeReal=intr->iterMadeReal;
+						if(isNew){
+// 							cout<<"Copying contact geom and phys from "<<intr->id1<<"-"<<intr->id2<<" to here ("<<c->id1<<"-"<<c->id2<<")"<<endl;
+							c->geom=scm;
+							c->phys=intr->phys;
+							c->iterMadeReal=intr->iterMadeReal;
+						}
 						scm->trueInt=c->id2;
 						scm->isDuplicate=2;	//command the old contact deletion.
 						isNew=0;
@@ -397,7 +403,7 @@ YADE_PLUGIN((Ig2_Sphere_GridConnection_ScGridCoGeom));
 //!##################	Laws   #####################
 
 //!			O/
-void Law2_ScGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
+bool Law2_ScGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
 	int id1 = contact->getId1(), id2 = contact->getId2();
 	ScGridCoGeom* geom= static_cast<ScGridCoGeom*>(ig.get());
 	FrictPhys* phys = static_cast<FrictPhys*>(ip.get());
@@ -405,16 +411,12 @@ void Law2_ScGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared
 		if (neverErase) {
 			phys->shearForce = Vector3r::Zero();
 			phys->normalForce = Vector3r::Zero();}
-		else 	scene->interactions->requestErase(contact);
-		return;}
+		else return false;}
 	if (geom->isDuplicate) {
 		if (id2!=geom->trueInt) {
 			//cerr<<"skip duplicate "<<id1<<" "<<id2<<endl;
-			if (geom->isDuplicate==2) {
-				//cerr<<"erase duplicate "<<id1<<" "<<id2<<endl;
-				scene->interactions->requestErase(contact);
-			}
-			return;
+			if (geom->isDuplicate==2) return false;
+			return true;
 		}
 	}
 	Real& un=geom->penetrationDepth;
@@ -451,11 +453,12 @@ void Law2_ScGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared
 	scene->forces.addTorque(geom->id3,(1-geom->relPos)*twist);
 	scene->forces.addForce(geom->id4,(-geom->relPos)*force);
 	scene->forces.addTorque(geom->id4,geom->relPos*twist);
+	return true;
 }
 YADE_PLUGIN((Law2_ScGridCoGeom_FrictPhys_CundallStrack));
 
 
-void Law2_ScGridCoGeom_CohFrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
+bool Law2_ScGridCoGeom_CohFrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
 	const int &id1 = contact->getId1();
 	const int &id2 = contact->getId2();
 	ScGridCoGeom* geom  = YADE_CAST<ScGridCoGeom*> (ig.get());
@@ -464,11 +467,8 @@ void Law2_ScGridCoGeom_CohFrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, sha
 	if (geom->isDuplicate) {
 		if (id2!=geom->trueInt) {
 			//cerr<<"skip duplicate "<<id1<<" "<<id2<<endl;
-			if (geom->isDuplicate==2) {
-				//cerr<<"erase duplicate "<<id1<<" "<<id2<<endl;
-				scene->interactions->requestErase(contact);
-			}
-			return;
+			if (geom->isDuplicate==2) return false;
+			return true;
 		}
 	}
 	
@@ -479,13 +479,13 @@ void Law2_ScGridCoGeom_CohFrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, sha
 	
 	if (phys->fragile && (-Fn)> phys->normalAdhesion) {
 		// BREAK due to tension
-		scene->interactions->requestErase(contact); return;
+		return false;
 	} else {
 		if ((-Fn)> phys->normalAdhesion) {//normal plasticity
 			Fn=-phys->normalAdhesion;
 			phys->unp = un+phys->normalAdhesion/phys->kn;
 			if (phys->unpMax && phys->unp<phys->unpMax)
-				scene->interactions->requestErase(contact); return;
+				return false;
 		}
 		phys->normalForce = Fn*geom->normal;
 		Vector3r& shearForce = geom->rotate(phys->shearForce);
@@ -520,11 +520,12 @@ void Law2_ScGridCoGeom_CohFrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, sha
 		scene->forces.addTorque(geom->id3,(1-geom->relPos)*twist);
 		scene->forces.addForce(geom->id4,(-geom->relPos)*force);
 		scene->forces.addTorque(geom->id4,geom->relPos*twist);
+		return true;
 	}
 }
 YADE_PLUGIN((Law2_ScGridCoGeom_CohFrictPhys_CundallStrack));
 
-void Law2_GridCoGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
+bool Law2_GridCoGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, shared_ptr<IPhys>& ip, Interaction* contact){
 	int id1 = contact->getId1(), id2 = contact->getId2();
 	id_t id11 = (static_cast<GridConnection*>((&Body::byId(id1)->shape)->get()))->node1->getId();
 	id_t id12 = (static_cast<GridConnection*>((&Body::byId(id1)->shape)->get()))->node2->getId();
@@ -536,8 +537,7 @@ void Law2_GridCoGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, sh
 		if (neverErase) {
 			phys->shearForce = Vector3r::Zero();
 			phys->normalForce = Vector3r::Zero();}
-		else 	scene->interactions->requestErase(contact);
-		return;}
+		else return false;}
 	Real& un=geom->penetrationDepth;
 	phys->normalForce=phys->kn*std::max(un,(Real) 0)*geom->normal;
 
@@ -579,6 +579,7 @@ void Law2_GridCoGridCoGeom_FrictPhys_CundallStrack::go(shared_ptr<IGeom>& ig, sh
 	scene->forces.addTorque(id12,geom->relPos1*torque1);
 	scene->forces.addTorque(id21,(1-geom->relPos2)*torque2);
 	scene->forces.addTorque(id22,geom->relPos2*torque2);
+	return true;
 }
 YADE_PLUGIN((Law2_GridCoGridCoGeom_FrictPhys_CundallStrack));
 //!##################	Bounds   #####################

@@ -119,7 +119,7 @@ class Shop{
 		
 		//! Function to compute overall ("macroscopic") stress.
 		static Matrix3r getStress(Real volume=0);
-		static Matrix3r getCapillaryStress(Real volume=0);
+		static Matrix3r getCapillaryStress(Real volume=0, bool mindlin=false);
 		static Matrix3r stressTensorOfPeriodicCell() { LOG_WARN("Shop::stressTensorOfPeriodicCelli is DEPRECATED: use getStress instead"); return Shop::getStress(); }
 		//! Compute overall ("macroscopic") stress of periodic cell, returning 2 tensors
 		//! (contribution of normal and shear forces)
@@ -139,7 +139,8 @@ class Shop{
 		static void setContactFriction(Real angleRad);
 
 		//! Homothetic change of sizes of spheres and clumps
-		static void growParticles(Real multiplier, bool updateMass, bool dynamicOnly, unsigned int discretization);
+		static void growParticles(Real multiplier, bool updateMass, bool dynamicOnly);
 		//! Change of size of a single sphere or a clump
+		// DEPREC, update wrt growParticles()
 		static void growParticle(Body::id_t bodyID, Real multiplier, bool updateMass);
 };

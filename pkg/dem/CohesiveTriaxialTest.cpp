@@ -9,8 +9,6 @@
 #include "CohesiveTriaxialTest.hpp"
 
 #include<yade/pkg/dem/CohesiveFrictionalContactLaw.hpp>
-#include<yade/pkg/dem/Ip2_CohFrictMat_CohFrictMat_CohFrictPhys.hpp>
-#include<yade/pkg/dem/CohFrictMat.hpp>
 #include<yade/pkg/dem/GlobalStiffnessTimeStepper.hpp>
 
 #include<yade/pkg/dem/TriaxialStressController.hpp>
@@ -31,15 +29,12 @@
 #include<yade/core/Body.hpp>
 #include<yade/pkg/common/Box.hpp>
 #include<yade/pkg/common/Sphere.hpp>
-#include<yade/pkg/common/Bo1_Sphere_Aabb.hpp>
-#include<yade/pkg/common/Bo1_Box_Aabb.hpp>
+#include<yade/pkg/common/Bo1_Aabb.hpp>
 
 #include<yade/pkg/common/ForceResetter.hpp>
 
 #include<yade/pkg/dem/Shop.hpp>
 
-#include <boost/filesystem/convenience.hpp>
-#include <boost/numeric/conversion/bounds.hpp>
 #include <boost/limits.hpp>
 
 // random

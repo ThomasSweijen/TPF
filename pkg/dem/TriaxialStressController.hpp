@@ -40,8 +40,8 @@ class TriaxialStressController : public BoundaryController
 		//! The values of stresses
 		Vector3r	stress [6];
 		Vector3r	force [6];
-		//! Value of spheres volume (solid volume)
-		Real spheresVolume;
+		//! Value of particles volume (solid volume of clumps and spheres)
+		Real particlesVolume;
 		//! Value of box volume
 		Real boxVolume;
 		//! Sample porosity
@@ -116,6 +116,7 @@ class TriaxialStressController : public BoundaryController
 		((Real,meanStress,0,Attr::readonly,"Mean stress in the packing. |yupdate|"))
 		((Real,volumetricStrain,0,Attr::readonly,"Volumetric strain (see :yref:`TriaxialStressController::strain`).|yupdate|"))
 		((Real,externalWork,0,Attr::readonly,"Energy provided by boundaries.|yupdate|"))
+		((bool,updatePorosity,false,,"If true porosity calculation will be updated once (will automatically reset to false after one calculation step). Can be used, when volume of particles changes during the simulation (e.g. when particles are erased or when clumps are created)."))
 		,
 		/* deprecated */
 		((sigma1,goal1,"renamed 'goal1', it can now also be a strain depending on stressMask"))
@@ -142,7 +143,8 @@ class TriaxialStressController : public BoundaryController
 		.def_readonly("strainRate",&TriaxialStressController::getStrainRate,"Current strain rate in a vector d/dt(exx,eyy,ezz).")
  		.def_readonly("porosity",&TriaxialStressController::porosity,"Porosity of the packing.")
 		.def_readonly("boxVolume",&TriaxialStressController::boxVolume,"Total packing volume.")
-		.def_readonly("spheresVolume",&TriaxialStressController::spheresVolume,"Total volume pf spheres.")
+		.def_readonly("particlesVolume",&TriaxialStressController::particlesVolume,"Total volume of particles (clumps and spheres).")
+		.def_readonly("spheresVolume",&TriaxialStressController::particlesVolume,"Shorthand for :yref:`TriaxialStressController::particlesVolume`")
 		.def_readonly("max_vel1",&TriaxialStressController::max_vel1,"see :yref:`TriaxialStressController::max_vel` |ycomp|")
 		.def_readonly("max_vel2",&TriaxialStressController::max_vel2,"see :yref:`TriaxialStressController::max_vel` |ycomp|")
 		.def_readonly("max_vel3",&TriaxialStressController::max_vel3,"see :yref:`TriaxialStressController::max_vel` |ycomp|")

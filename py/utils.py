@@ -37,12 +37,8 @@ def saveVars(mark='',loadNow=True,**kw):
 		(1, 2, 3)
 
 	those variables will be save in the .xml file, when the simulation itself is saved. To recover those variables once the .xml is loaded again, use
-
-		>>> loadVars('something')
-
-	and they will be defined in the yade.params.\ *mark* module. The *loadNow* parameter calls :yref:`yade.utils.loadVars` after saving automatically.
-	
-	If 'something' already exists, given variables will be inserted.
+	``loadVars('something')``and they will be defined in the yade.params.\ *mark* module. The *loadNow* parameter calls :yref:`yade.utils.loadVars`
+	after saving automatically. If 'something' already exists, given variables will be inserted.
 	"""
 	import cPickle
 	try: 
@@ -395,7 +391,7 @@ def tetra(vertices,strictCheck=True,dynamic=True,fixed=False,wire=True,color=Non
 	return b
 
 def polyhedron(vertices,dynamic=True,fixed=False,wire=True,color=None,highlight=False,noBound=False,material=-1,mask=1,chain=-1):
-	"""Create tetrahedron (actually simple Polyhedra) with given parameters.
+	"""Create polyhedron with given parameters.
 
 	:param [Vector3,Vector3,Vector3,Vector3] vertices: coordinates of vertices in the global coordinate system.
 
@@ -755,7 +751,7 @@ If the last point's x coord is zero, it will not be duplicated."""
 def _deprecatedUtilsFunction(old,new):
 	"Wrapper for deprecated functions, example below."
 	import warnings
-	warnings.warn('Function utils.%s is deprecated, use %s instead.'%(old,new),stacklevel=2,category=DeprecationWarning)
+	warnings.warn('Function utils.%s is deprecated, use %s instead.'%(old,new),stacklevel=2,category=UserWarning)
 
 # example of _deprecatedUtilsFunction usage:
 #
@@ -940,7 +936,9 @@ def psd(bins=5, mass=True, mask=-1):
 			if ((2*b.shape.radius)	> maxD) : maxD = 2*b.shape.radius
 			if (((2*b.shape.radius)	< minD) or (minD==0.0)): minD = 2*b.shape.radius
 
-	if (minD==maxD): return false       #All particles are having the same size
+	if (minD==maxD):
+		print 'Monodisperse packing with diameter =', minD,'. Not computing psd'
+		return False       #All particles are having the same size
   
 	binsSizes = numpy.linspace(minD, maxD, bins+1)
 	
