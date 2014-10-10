@@ -56,6 +56,7 @@ YADE_PLUGIN((SoluteFlowEngineT));
 class SoluteFlowEngine : public SoluteFlowEngineT
 {
 	public :
+		void InscribedSphereCorrection();
 		void getInsideEqSphere();
 		void drainageFunction();
 		void TPFaction();
@@ -119,58 +120,6 @@ REGISTER_SERIALIZABLE(SoluteFlowEngine);
 // PeriodicFlowEngine::~PeriodicFlowEngine(){}
 
 
-void SoluteFlowEngine::PorethroatSaturation(double Pc, int ID, unsigned int facet)
-{
-         // NOTE: Instead of passing on ID, I could pass on a CellHandle& cell, but that is for internal within C++
-        FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
-	  if (cell->info().id == ID){
-
-        double R0=0.0, R1=0.0, R2=0.0, R3=0.0;
-
-     
-	  Eigen::MatrixXf M(2,3), C(2,3);
-	 Eigen::VectorXf X(3), Z(3);
-	 Eigen::VectorXf B(2), D(2);
- 	  M(0,0) = 2*(cell->vertex(facetVertices[facet][0])->point().x() -  cell->vertex(facetVertices[facet][1])->point().x());
- 	  M(1,0) = 2*(cell->vertex(facetVertices[facet][0])->point().x() -  cell->vertex(facetVertices[facet][2])->point().x());
-	  M(0,1) = 2*(cell->vertex(facetVertices[facet][0])->point().y() -  cell->vertex(facetVertices[facet][1])->point().y());
-	  M(1,1) = 2*(cell->vertex(facetVertices[facet][0])->point().y() -  cell->vertex(facetVertices[facet][2])->point().y());
-	  M(0,2) = 2*(cell->vertex(facetVertices[facet][0])->point().z() -  cell->vertex(facetVertices[facet][1])->point().z());
-	  M(1,2) = 2*(cell->vertex(facetVertices[facet][0])->point().z() -  cell->vertex(facetVertices[facet][2])->point().z());
-
-
-	  
-	  B(0) = (pow(cell->vertex(facetVertices[facet][0])->point().x(),2)+pow(cell->vertex(facetVertices[facet][0])->point().y(),2)
-	      +pow(cell->vertex(facetVertices[facet][0])->point().z(),2) - cell->vertex(facetVertices[facet][0])->point().weight())
-	      -(pow(cell->vertex(facetVertices[facet][1])->point().x(),2)+pow(cell->vertex(facetVertices[facet][1])->point().y(),2)
-	       +pow(cell->vertex(facetVertices[facet][1])->point().z(),2) - cell->vertex(facetVertices[facet][1])->point().weight())
-	      -2*Pc*(sqrt(cell->vertex(facetVertices[facet][0])->point().weight())-sqrt(cell->vertex(facetVertices[facet][1])->point().weight()));
-	  
-	  B(1) = (pow(cell->vertex(facetVertices[facet][0])->point().x(),2)+pow(cell->vertex(facetVertices[facet][0])->point().y(),2)	  
-	      +pow(cell->vertex(facetVertices[facet][0])->point().z(),2) - cell->vertex(facetVertices[facet][0])->point().weight())	  
-	      -(pow(cell->vertex(facetVertices[facet][2])->point().x(),2)+pow(cell->vertex(facetVertices[facet][2])->point().y(),2)	  
-	       +pow(cell->vertex(facetVertices[facet][2])->point().z(),2) - cell->vertex(facetVertices[facet][2])->point().weight())	  
-	      -2*Pc*(sqrt(cell->vertex(facetVertices[facet][0])->point().weight())-sqrt(cell->vertex(facetVertices[facet][1])->point().weight()));	  
-	
-	    X = M.fullPivLu().solve(B);  
-
-
-	    cout << endl <<B[0]<< " " << B[1];
-	      cout << endl << X[0] << " "<< X[1] << " "<< X[2];
-	  
-       cout << "hallo!";
-       
-       R0= sqrt(cell->vertex(0)->point().weight());
-       R1 = sqrt(cell->vertex(1)->point().weight());
-       R2 = sqrt(cell->vertex(2)->point().weight());
-       R3 = sqrt(cell->vertex(3)->point().weight());
-       
-       
-       
-	  }
-	}
-  
-}
 
 
 
@@ -373,29 +322,6 @@ void SoluteFlowEngine::InsertBoundaryConditions()
   
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 void SoluteFlowEngine::drainageFunction()
 {
    //Check pore-throat and inscribed circle for drainage.
@@ -569,14 +495,6 @@ double SoluteFlowEngine::getBulkSaturation()
        //Do not use the boundary cells.
        for (unsigned int ngb=0;ngb<4;ngb++){ 
 	 if(cell->vertex(ngb)->info().id() < 6){boundary = true;}
-	 
-//  			if (cell->vertex(ngb)->info().id() == BCIDWettingPhase){
-// 			boundary = true;
-// 			  }
-// 
-// 			if (cell->vertex(ngb)->info().id() == BCIDNonWettingPhase){
-// 			boundary = true;
-// 			}
  		}
        
        
@@ -615,11 +533,12 @@ void SoluteFlowEngine::getInsideEqSphere()
   
     // This routine finds the radius of the inscribed sphere within each pore-body
     // Following Mackay et al., 1972. 
-    // NOTE (thomas): Has to become more efficient
       double d01 = 0.0, d02 = 0.0, d03 = 0.0, d12 = 0.0, d13 = 0.0, d23 = 0.0, Rin = 0.0, r0 = 0.0, r1 = 0.0, r2 =0.0, r3 = 0.0;
       bool check = false;
       unsigned int i = 0;
-      double summ = 0.0, count = 0.0;
+      double dR=0.0, tempR = 0.0;
+      bool initialSign = false; //False = negative, true is positive
+      bool first = true;
       
       Eigen::MatrixXd M(6,6);
 
@@ -704,63 +623,142 @@ void SoluteFlowEngine::getInsideEqSphere()
 	M(4,5) = 1.0;
 	M(5,5) = 0.0;
 	
-	
+
 	i = 0;
-	Rin  = 0.0;
 	check = false;
-	//cout << endl << cell -> info().id;
-	//Iterate untill with increasing inscribed sphere radius, untill determinant is zero.
+	dR = Rin = 0.0 + (min(r0,min(r1,min(r2,r3))) / 50.0); //Estimate an initial dR
+	first = true;
+	//Iterate untill check = true, such that an accurate answer as been found
 	while (check == false){
-	Rin = 0.0 + (min(r0,min(r1,min(r2,r3))) / 1000.0)*i;
-	i = i + 1;
+	  i = i + 1;
+	  tempR = Rin;
+	  Rin = Rin + dR;
 	
-	M(4,0) = pow((r0+Rin),2);
-	M(4,1) = pow((r1+Rin),2);
-	M(4,2) = pow((r2+Rin),2);
-	M(4,3) = pow((r3+Rin),2);
-	M(0,4) = pow((r0+Rin),2);
-	M(1,4) = pow((r1+Rin),2);
-	M(2,4) = pow((r2+Rin),2);
-	M(3,4) = pow((r3+Rin),2);
-	
-	if (M.determinant() < 0.0){check = true;} //Check whether determinant is negative, if yes, then stop iteration
-	if (Rin > 100.0*min(r0,min(r1,min(r2,r3)))){ // Check for upper limits NOTE if this is used, for boundary cells
-	  check = true;
-	  cell -> info().error()=true;
-	  Rin = (cell -> neighbor(0) -> info().InsideSphereRadius() + 
-		cell -> neighbor(1) -> info().InsideSphereRadius() +
-		cell -> neighbor(2) -> info().InsideSphereRadius() +
-		cell -> neighbor(3) -> info().InsideSphereRadius()) / 4.0;
-	  //cout << endl << "error with pore " << cell -> info().id;
-	}
-	}
+	  M(4,0) = pow((r0+Rin),2);
+	  M(4,1) = pow((r1+Rin),2);
+	  M(4,2) = pow((r2+Rin),2);
+	  M(4,3) = pow((r3+Rin),2);
+	  M(0,4) = pow((r0+Rin),2);
+	  M(1,4) = pow((r1+Rin),2);
+	  M(2,4) = pow((r2+Rin),2);
+	  M(3,4) = pow((r3+Rin),2);
 	
 	
-	cell -> info().InsideSphereRadius() = Rin;
-
-
+	  if (first){
+	    first = false;
+	    if(M.determinant() < 0.0){initialSign = false;} //Initial D is negative
+	    if(M.determinant() > 0.0){initialSign = true;} // Initial D is positive
+	  }
+	
+	  if(std::abs(M.determinant()) < 1E-30){check = true;}
+	
+	
+	  if((initialSign==true) && (check ==false)){
+	    if(M.determinant() < 0.0){
+	      Rin = Rin -dR;
+	      dR = dR / 2.0; 
+	    }	  
+	  }
+	
+	  if((initialSign==false) && (check ==false)){
+	    if(M.determinant() > 0.0){
+	      Rin = Rin -dR;
+	      dR = dR / 2.0;  
+	    }	  
+	  }
+	
+	  cout << endl << i << " "<<Rin << " "<< dR << " "<< M.determinant();
+	  if(i > 4000){
+	    cout << endl << "error, finding solution takes too long cell:" << cell->info().id;
+// 	    cell -> info().error()=true;
+	    check = true;
+	  }
+	  if ( std::abs(tempR - Rin)/Rin < 0.001){check = true;}
+	
+// 	if (M.determinant() < 0.0){check = true;} //Check whether determinant is negative, if yes, then stop iteration
+// 	if (Rin > 100.0*min(r0,min(r1,min(r2,r3)))){ // Check for upper limits NOTE if this is used, for boundary cells
+// 	  check = true;
+// 	  cell -> info().error()=true;
+// 	  Rin = (cell -> neighbor(0) -> info().InsideSphereRadius() + 
+// 		cell -> neighbor(1) -> info().InsideSphereRadius() +
+// 		cell -> neighbor(2) -> info().InsideSphereRadius() +
+// 		cell -> neighbor(3) -> info().InsideSphereRadius()) / 4.0;
+// 	  //cout << endl << "error with pore " << cell -> info().id;
       }
-    //Assign for each pore-body with an error, for the average of surrounding pores. Only applies for B.C pores.  
+    cell -> info().InsideSphereRadius() = Rin;
+   }
+}
+   
+
+void SoluteFlowEngine::InscribedSphereCorrection()
+{
+    // For boundary cells, and the occasional mis-calculation, we have stored the cell as an error(). The inscribed radius will in that case be the average of its surrouning, non-error, functions.
+    double  summ = 0.0, count = 0.0;
+    
     FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
       if(cell->info().error() == true){ 
-    summ = 0.0;
-    count = 0;
-    if(cell -> neighbor(0) -> info().error() == false){summ = summ + cell -> neighbor(0) -> info().InsideSphereRadius(); count = count+1.0;}
-    if(cell -> neighbor(1) -> info().error() == false){summ = summ + cell -> neighbor(1) -> info().InsideSphereRadius(); count = count+1.0;}
-    if(cell -> neighbor(2) -> info().error() == false){summ = summ + cell -> neighbor(2) -> info().InsideSphereRadius(); count = count+1.0;}
-    if(cell -> neighbor(3) -> info().error() == false){summ = summ + cell -> neighbor(3) -> info().InsideSphereRadius(); count = count+1.0;}
-    cell -> info().InsideSphereRadius() = summ / count;
-    if (cell -> info().InsideSphereRadius() == 0.0){cell -> info().InsideSphereRadius();}
-     
-     
-   }
+	summ = 0.0;
+	count = 0;
+	  if(cell -> neighbor(0) -> info().error() == false){summ = summ + cell -> neighbor(0) -> info().InsideSphereRadius(); count = count+1.0;}
+	  if(cell -> neighbor(1) -> info().error() == false){summ = summ + cell -> neighbor(1) -> info().InsideSphereRadius(); count = count+1.0;}
+	  if(cell -> neighbor(2) -> info().error() == false){summ = summ + cell -> neighbor(2) -> info().InsideSphereRadius(); count = count+1.0;}
+	  if(cell -> neighbor(3) -> info().error() == false){summ = summ + cell -> neighbor(3) -> info().InsideSphereRadius(); count = count+1.0;}
+	  cell -> info().InsideSphereRadius() = summ / count;     
+      }
   }
+}  
+void SoluteFlowEngine::PorethroatSaturation(double Pc, int ID, unsigned int facet)
+{
+         // NOTE: Instead of passing on ID, I could pass on a CellHandle& cell, but that is for internal within C++
+        FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+	  if (cell->info().id == ID){
 
-      
-      
+        double R0=0.0, R1=0.0, R2=0.0, R3=0.0;
+
+     
+	  Eigen::MatrixXf M(2,3), C(2,3);
+	 Eigen::VectorXf X(3), Z(3);
+	 Eigen::VectorXf B(2), D(2);
+ 	  M(0,0) = 2*(cell->vertex(facetVertices[facet][0])->point().x() -  cell->vertex(facetVertices[facet][1])->point().x());
+ 	  M(1,0) = 2*(cell->vertex(facetVertices[facet][0])->point().x() -  cell->vertex(facetVertices[facet][2])->point().x());
+	  M(0,1) = 2*(cell->vertex(facetVertices[facet][0])->point().y() -  cell->vertex(facetVertices[facet][1])->point().y());
+	  M(1,1) = 2*(cell->vertex(facetVertices[facet][0])->point().y() -  cell->vertex(facetVertices[facet][2])->point().y());
+	  M(0,2) = 2*(cell->vertex(facetVertices[facet][0])->point().z() -  cell->vertex(facetVertices[facet][1])->point().z());
+	  M(1,2) = 2*(cell->vertex(facetVertices[facet][0])->point().z() -  cell->vertex(facetVertices[facet][2])->point().z());
+
+
+	  
+	  B(0) = (pow(cell->vertex(facetVertices[facet][0])->point().x(),2)+pow(cell->vertex(facetVertices[facet][0])->point().y(),2)
+	      +pow(cell->vertex(facetVertices[facet][0])->point().z(),2) - cell->vertex(facetVertices[facet][0])->point().weight())
+	      -(pow(cell->vertex(facetVertices[facet][1])->point().x(),2)+pow(cell->vertex(facetVertices[facet][1])->point().y(),2)
+	       +pow(cell->vertex(facetVertices[facet][1])->point().z(),2) - cell->vertex(facetVertices[facet][1])->point().weight())
+	      -2*Pc*(sqrt(cell->vertex(facetVertices[facet][0])->point().weight())-sqrt(cell->vertex(facetVertices[facet][1])->point().weight()));
+	  
+	  B(1) = (pow(cell->vertex(facetVertices[facet][0])->point().x(),2)+pow(cell->vertex(facetVertices[facet][0])->point().y(),2)	  
+	      +pow(cell->vertex(facetVertices[facet][0])->point().z(),2) - cell->vertex(facetVertices[facet][0])->point().weight())	  
+	      -(pow(cell->vertex(facetVertices[facet][2])->point().x(),2)+pow(cell->vertex(facetVertices[facet][2])->point().y(),2)	  
+	       +pow(cell->vertex(facetVertices[facet][2])->point().z(),2) - cell->vertex(facetVertices[facet][2])->point().weight())	  
+	      -2*Pc*(sqrt(cell->vertex(facetVertices[facet][0])->point().weight())-sqrt(cell->vertex(facetVertices[facet][1])->point().weight()));	  
+	
+	    X = M.fullPivLu().solve(B);  
+
+
+	    cout << endl <<B[0]<< " " << B[1];
+	      cout << endl << X[0] << " "<< X[1] << " "<< X[2];
+	  
+       cout << "hallo!";
+       
+       R0= sqrt(cell->vertex(0)->point().weight());
+       R1 = sqrt(cell->vertex(1)->point().weight());
+       R2 = sqrt(cell->vertex(2)->point().weight());
+       R3 = sqrt(cell->vertex(3)->point().weight());
+       
+       
+       
+	  }
+	}
   
-    }
-    
+}
   
 
 // void SoluteFlowEngine::LiquidBridge()
