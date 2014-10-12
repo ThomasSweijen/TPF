@@ -27,6 +27,76 @@ YADE_PLUGIN((TwoPhaseFlowEngine));
 void TwoPhaseFlowEngine::fancyFunction(Real what) {std::cerr<<"yes, I'm a new function"<<std::endl;}
 
 
+
+void TwoPhaseFlowEngine:: computePoreSatAtInterface(int ID/*CellHandle cell*/)
+{
+    //This function calculates the new saturation of pore at the interface between wetting/nonwetting 
+    //filled pores. It substracts the outgoing flux from the water volume
+      FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+	if(cell->info().id == ID){
+	  
+  
+    double qout = 0.0, Vw = 0.0;
+    
+    for(unsigned int ngb = 0; ngb < 4; ngb++)
+    {
+      //find outflux of water
+      qout= qout + std::abs(cell->info().kNorm() [ngb])* (std::max(0.0,(cell->neighbor ( ngb )->info().p()-cell->info().p())));     
+    }
+   
+    Vw = cell->info().saturation * cell->info().poreBodyVolume - (qout * scene->dt);  
+    cell->info().saturation = Vw / cell->info().poreBodyVolume;
+   
+   
+   // The following constrains check the value of saturation
+    if(std::abs(cell->info().saturation) < 1e-6){cell->info().saturation = 0.0;} // To prevent dt going to 0
+    if(cell->info().saturation < 0.0){
+      cout << endl << "dt was too large!, negative saturation in cell "<< cell->info().id;
+      cell->info().saturation = 0.0;    
+      }
+    if(cell->info().saturation > 1.0){
+      cout << endl <<"dt was too large!,saturation larger than 1 in cell " << cell->info().id;
+      cell->info().saturation = 1.0;}
+      }
+    } 
+}
+
+void TwoPhaseFlowEngine:: computePoreCapillaryPressure(int ID/*CellHandle cell*/)
+{
+  
+  double Re = 0.0, Pc = 0.0, Pg = 0.0, Pw = 0.0;
+   // This formula relates the pore-saturation to the capillary-pressure, and the water-pressure
+  FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
+  if(cell->info().id == ID){
+  
+  for(unsigned int i = 0; i<4;i++)
+  {
+    Re = max(Re,cell->info().poreThroatRadius[i]);
+  }
+  Pc = surfaceTension / (Re * (1.0-exp(-6.83 * cell->info().saturation)));
+  Pg = std::max(bndCondValue[2],bndCondValue[3]);
+  Pw = Pg - Pe; //NOTE Pw has to be imposed!
+  
+    
+    
+    
+  }
+}
+  
+}
+
+void TwoPhaseFlowEngine::computePoreThroatRadius()
+{
+  //Calculate the porethroat radii of the inscribed sphere in each pore-body. 
+  RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
+  FiniteCellsIterator cellEnd = tri.finite_cells_end();
+  for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
+    for(unsigned int i = 0; i<4;i++){
+    cell->info().poreThroatRadius[i] = solver->computeEffectiveRadius(cell,i);
+    }
+  }
+}
+
 void TwoPhaseFlowEngine::computePoreBodyRadius()
 {
   

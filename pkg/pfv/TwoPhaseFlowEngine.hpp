@@ -64,6 +64,9 @@ class TwoPhaseFlowEngine : public TwoPhaseFlowEngineT
 	//if it is useful for everyone
 	void fancyFunction(Real what);
 	void computePoreBodyRadius();
+	void computePoreThroatRadius();
+	void computePoreSatAtInterface(int ID/*CellHandle& cell*/);
+	void computePoreCapillaryPressure(int ID/*CellHandle cell*/);
 
 	YADE_CLASS_BASE_DOC_ATTRS_INIT_CTOR_PY(TwoPhaseFlowEngine,TwoPhaseFlowEngineT,"documentation here",
 	((double,surfaceTension,0.0728,,"Water Surface Tension in contact with air at 20 Degrees Celsius is: 0.0728(N/m)"))
