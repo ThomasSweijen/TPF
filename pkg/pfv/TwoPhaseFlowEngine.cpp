@@ -20,14 +20,29 @@
 
 YADE_PLUGIN((TwoPhaseFlowEngineT));
 
-
-
 YADE_PLUGIN((TwoPhaseFlowEngine));
 
 void TwoPhaseFlowEngine::fancyFunction(Real what) {std::cerr<<"yes, I'm a new function"<<std::endl;}
 
+void TwoPhaseFlowEngine::initializeCellIndex()
+{
+    int k=0;
+    RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
+    FiniteCellsIterator cellEnd = tri.finite_cells_end();
+    for ( FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++ ) {
+        cell->info().index=k++;}
+}
 
-
+void TwoPhaseFlowEngine::computePoreBodyVolume()
+{
+    initializeVolumes(*solver);
+    RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
+    FiniteCellsIterator cellEnd = tri.finite_cells_end();
+    CellHandle neighbourCell;
+    for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
+        cell->info().poreBodyVolume = std::abs( cell->info().volume() ) - solver->volumeSolidPore(cell);
+    }
+}
 
 void TwoPhaseFlowEngine:: computePoreSatAtInterface(CellHandle cell)
 {
@@ -58,14 +73,12 @@ void TwoPhaseFlowEngine:: computePoreSatAtInterface(CellHandle cell)
       cell->info().saturation = 1.0;}
 }
 
-
 void TwoPhaseFlowEngine:: computePoreCapillaryPressure(CellHandle cell)
 {
   //This formula relates the pore-saturation to the capillary-pressure, and the water-pressure
   //based on Joekar-Niasar, for cubic pores. NOTE: Needs to be changed into a proper set of equations 
 
-  double Re = 0.0, Pc = 0.0, Pg = 0.0;
-  
+  double Re = 0.0, Pc = 0.0, Pg = 0.0;  
   
   for(unsigned int i = 0; i<4;i++)
   {
@@ -75,7 +88,6 @@ void TwoPhaseFlowEngine:: computePoreCapillaryPressure(CellHandle cell)
   Pg = std::max(bndCondValue[2],bndCondValue[3]);
   cell->info().p() = Pg - Pc; 
 }
-
 
 void TwoPhaseFlowEngine::computePoreThroatRadius()
 {
@@ -102,8 +114,6 @@ void TwoPhaseFlowEngine::computePoreBodyRadius()
       bool first = true;
       
       Eigen::MatrixXd M(6,6);
-
-
       
       FOREACH(CellHandle& cell, solver->T[solver->currentTes].cellHandles){
 	//Distance between multiple particles, can be done more efficient
@@ -133,13 +143,11 @@ void TwoPhaseFlowEngine::computePoreBodyRadius()
 	pow((cell->vertex(2)->point().y()-cell->vertex(3)->point().y()),2)+
 	pow((cell->vertex(2)->point().z()-cell->vertex(3)->point().z()),2);
 	
-
 	//Radii of the particles
 	r0 = sqrt(cell -> vertex(0) -> point().weight());
 	r1 = sqrt(cell -> vertex(1) -> point().weight());
 	r2 = sqrt(cell -> vertex(2) -> point().weight());
-	r3 = sqrt(cell -> vertex(3) -> point().weight());
-	
+	r3 = sqrt(cell -> vertex(3) -> point().weight());	
 	
 	//Fill coefficient matrix
 	M(0,0) = 0.0;
@@ -184,7 +192,6 @@ void TwoPhaseFlowEngine::computePoreBodyRadius()
 	M(4,5) = 1.0;
 	M(5,5) = 0.0;
 	
-
 	i = 0;
 	check = false;
 	dR = Rin = 0.0 + (min(r0,min(r1,min(r2,r3))) / 50.0); //Estimate an initial dR
@@ -211,8 +218,7 @@ void TwoPhaseFlowEngine::computePoreBodyRadius()
 	    if(M.determinant() > 0.0){initialSign = true;} // Initial D is positive
 	  }
 	
-	  if(std::abs(M.determinant()) < 1E-30){check = true;}
-	
+	  if(std::abs(M.determinant()) < 1E-30){check = true;}	
 	
 	  if((initialSign==true) && (check ==false)){
 	    if(M.determinant() < 0.0){
@@ -239,9 +245,6 @@ void TwoPhaseFlowEngine::computePoreBodyRadius()
     cell -> info().poreBodyRadius = Rin;
    }
 }
-
-
-
 
 #endif //TwoPhaseFLOW
  
