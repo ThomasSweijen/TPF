@@ -89,7 +89,7 @@ void TwoPhaseFlowEngine:: computePoreCapillaryPressure(CellHandle cell)
   cell->info().p() = Pg - Pc; 
 }
 
-void TwoPhaseFlowEngine::computePoreThroatRadius()
+void TwoPhaseFlowEngine::computePoreThroatCircleRadius()
 {
   //Calculate the porethroat radii of the inscribed sphere in each pore-body. 
   RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
