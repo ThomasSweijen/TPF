@@ -126,6 +126,7 @@ class FlowBoundingSphere : public Network<_Tesselation>
 		//return the list of constriction values
 		vector<double> getConstrictions();
 		vector<Constriction> getConstrictionsFull();
+		CVector cellCenter(CellHandle& cell);
 
 		void generateVoxelFile ( );
 		
@@ -165,12 +166,12 @@ class FlowBoundingSphere : public Network<_Tesselation>
 };
 
 } //namespace CGT
-#include <yade/lib/triangulation/FlowBoundingSphere.ipp>
+#include <lib/triangulation/FlowBoundingSphere.ipp>
 #ifdef LINSOLV
-#include "yade/lib/triangulation/FlowBoundingSphereLinSolv.hpp"
+#include "lib/triangulation/FlowBoundingSphereLinSolv.hpp"
 #endif
 
 /// _____ Template Implementation ____
-// #include "yade/lib/triangulation/FlowBoundingSphereLinSolv.ipp"
+// #include "lib/triangulation/FlowBoundingSphereLinSolv.ipp"
 
 #endif //FLOW_ENGINE

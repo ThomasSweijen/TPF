@@ -27,7 +27,6 @@ cmake_minimum_required(VERSION 2.8)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cMake")
 
-INCLUDE(FindPythonLibs)
 INCLUDE(FindPythonInterp)
 INCLUDE(FindOpenMP)
 INCLUDE(FindQt4)
@@ -64,6 +63,8 @@ ENDIF()
 #===========================================================
 
 SET(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++0x")
+INCLUDE_DIRECTORIES (${CMAKE_SOURCE_DIR})
+#===========================================================
 
 #===========================================================
 
@@ -105,13 +106,18 @@ MESSAGE("--   Boost_LIBRARIES: " ${Boost_LIBRARIES})
 
 #===========================================================
 FIND_PACKAGE(NumPy REQUIRED)
-  INCLUDE_DIRECTORIES(${NUMPY_INCLUDE_DIRS})
+INCLUDE_DIRECTORIES(${NUMPY_INCLUDE_DIRS})
 
 FIND_PACKAGE(Loki REQUIRED)
-  INCLUDE_DIRECTORIES(${LOKI_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(${LOKI_INCLUDE_DIR})
+
 FIND_PACKAGE(Eigen3 REQUIRED)
 FIND_PACKAGE(BZip2 REQUIRED)
 FIND_PACKAGE(ZLIB REQUIRED)
+
+SET(Python_ADDITIONAL_VERSIONS 2.6 2.7)
+FIND_PACKAGE(PythonLibs REQUIRED)
+INCLUDE_DIRECTORIES(${PYTHON_INCLUDE_PATH})
 #===========================================================
 
 SET(DEFAULT ON CACHE INTERNAL "Default value for enabled by default options")
@@ -420,13 +426,6 @@ IF(ENABLE_GUI)
   ADD_SUBDIRECTORY("${CMAKE_SOURCE_DIR}/gui")
 ENDIF(ENABLE_GUI)
 ADD_SUBDIRECTORY("${CMAKE_SOURCE_DIR}/py")
-#===========================================================
-
-# this is only a temporary hack, headers should be installed in the build-dir directly
-# perhaps there is a proper way, have to ask
-IF(NOT EXISTS "${CMAKE_BINARY_DIR}/yade")
-  EXECUTE_PROCESS(COMMAND ln -s ${CMAKE_SOURCE_DIR} ${CMAKE_BINARY_DIR}/yade)
-ENDIF ()
 #===========================================================
 
 FILE(GLOB SRC_CORE "core/*.cpp")

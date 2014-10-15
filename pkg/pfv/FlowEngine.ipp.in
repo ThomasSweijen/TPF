@@ -13,7 +13,7 @@
 #include <cholmod.h>
 #endif
 //For pyRunString
-#include<yade/lib/pyutil/gil.hpp>
+#include<lib/pyutil/gil.hpp>
 
 template< class _CellInfo, class _VertexInfo, class _Tesselation, class solverT >
 TemplateFlowEngine_@TEMPLATE_FLOW_NAME@<_CellInfo,_VertexInfo,_Tesselation,solverT>::~TemplateFlowEngine_@TEMPLATE_FLOW_NAME@() {}
@@ -31,6 +31,12 @@ unsigned int TemplateFlowEngine_@TEMPLATE_FLOW_NAME@<_CellInfo,_VertexInfo,_Tess
 }
 
 template< class _CellInfo, class _VertexInfo, class _Tesselation, class solverT >
+unsigned int TemplateFlowEngine_@TEMPLATE_FLOW_NAME@<_CellInfo,_VertexInfo,_Tesselation,solverT>::imposePressureFromId(long id, Real p)
+{
+	imposePressure(cellBarycenterFromId(id),p);
+}
+
+template< class _CellInfo, class _VertexInfo, class _Tesselation, class solverT >
 void TemplateFlowEngine_@TEMPLATE_FLOW_NAME@<_CellInfo,_VertexInfo,_Tesselation,solverT>::action()
 {
        if ( !isActivated ) return;
@@ -44,8 +50,9 @@ void TemplateFlowEngine_@TEMPLATE_FLOW_NAME@<_CellInfo,_VertexInfo,_Tesselation,
 	  backgroundSolver=solver;
 	  backgroundCompleted=true;
 	}
+	#ifdef YADE_OPENMP
 	solver->ompThreads = ompThreads>0? ompThreads : omp_get_max_threads();
-
+	#endif
         timingDeltas->checkpoint ( "Triangulating" );
 	updateVolumes ( *solver );
         timingDeltas->checkpoint ( "Update_Volumes" );

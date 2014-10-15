@@ -1,45 +1,45 @@
 // 2007 © Václav Šmilauer <eudoxos@arcig.cz>
 #include"Shop.hpp"
 
-#include<yade/core/Scene.hpp>
-#include<yade/core/Body.hpp>
-#include<yade/core/Interaction.hpp>
+#include<core/Scene.hpp>
+#include<core/Body.hpp>
+#include<core/Interaction.hpp>
 
-#include<yade/pkg/common/Aabb.hpp>
-#include<yade/core/Clump.hpp>
-#include<yade/pkg/common/InsertionSortCollider.hpp>
+#include<pkg/common/Aabb.hpp>
+#include<core/Clump.hpp>
+#include<pkg/common/InsertionSortCollider.hpp>
 
-#include<yade/pkg/common/Box.hpp>
-#include<yade/pkg/common/Sphere.hpp>
-#include<yade/pkg/common/ElastMat.hpp>
-#include<yade/pkg/dem/ViscoelasticPM.hpp>
-#include<yade/pkg/dem/CapillaryPhys.hpp>
+#include<pkg/common/Box.hpp>
+#include<pkg/common/Sphere.hpp>
+#include<pkg/common/ElastMat.hpp>
+#include<pkg/dem/ViscoelasticPM.hpp>
+#include<pkg/dem/CapillaryPhys.hpp>
 
-#include<yade/pkg/common/Bo1_Aabb.hpp>
-#include<yade/pkg/dem/NewtonIntegrator.hpp>
-#include<yade/pkg/dem/Ig2_Sphere_Sphere_ScGeom.hpp>
-#include<yade/pkg/dem/Ig2_Box_Sphere_ScGeom.hpp>
-#include<yade/pkg/dem/FrictPhys.hpp>
+#include<pkg/common/Bo1_Aabb.hpp>
+#include<pkg/dem/NewtonIntegrator.hpp>
+#include<pkg/dem/Ig2_Sphere_Sphere_ScGeom.hpp>
+#include<pkg/dem/Ig2_Box_Sphere_ScGeom.hpp>
+#include<pkg/dem/FrictPhys.hpp>
 
-#include<yade/pkg/common/ForceResetter.hpp>
+#include<pkg/common/ForceResetter.hpp>
 
-#include<yade/pkg/common/Dispatching.hpp>
-#include<yade/pkg/common/InteractionLoop.hpp>
-#include<yade/pkg/common/GravityEngines.hpp>
+#include<pkg/common/Dispatching.hpp>
+#include<pkg/common/InteractionLoop.hpp>
+#include<pkg/common/GravityEngines.hpp>
 
-#include<yade/pkg/dem/GlobalStiffnessTimeStepper.hpp>
-#include<yade/pkg/dem/ElasticContactLaw.hpp>
+#include<pkg/dem/GlobalStiffnessTimeStepper.hpp>
+#include<pkg/dem/ElasticContactLaw.hpp>
 
-#include<yade/pkg/dem/ScGeom.hpp>
-#include<yade/pkg/dem/FrictPhys.hpp>
-#include<yade/pkg/dem/HertzMindlin.hpp>
+#include<pkg/dem/ScGeom.hpp>
+#include<pkg/dem/FrictPhys.hpp>
+#include<pkg/dem/HertzMindlin.hpp>
 
-#include<yade/pkg/common/Grid.hpp>
+#include<pkg/common/Grid.hpp>
 
-#include<yade/pkg/dem/Tetra.hpp>
+#include<pkg/dem/Tetra.hpp>
 
 #ifdef YADE_OPENGL
-	#include<yade/pkg/common/Gl1_NormPhys.hpp>
+	#include<pkg/common/Gl1_NormPhys.hpp>
 #endif
 
 CREATE_LOGGER(Shop);
@@ -351,7 +351,12 @@ py::tuple Shop::fabricTensor(bool splitTensor, bool revertSign, Real thresholdFo
 
 Matrix3r Shop::getStress(Real volume){
 	Scene* scene=Omega::instance().getScene().get();
-	if (volume==0) volume = scene->isPeriodic?scene->cell->hSize.determinant():1;
+	Real volumeNonPeri = 0;
+	if (!scene->isPeriodic) {
+	  py::tuple extrema = Shop::aabbExtrema();
+	  volumeNonPeri = py::extract<Real>( (extrema[1][0] - extrema[0][0])*(extrema[1][1] - extrema[0][1])*(extrema[1][2] - extrema[0][2]) );
+	}
+	if (volume==0) volume = scene->isPeriodic?scene->cell->hSize.determinant():volumeNonPeri;
 	Matrix3r stressTensor = Matrix3r::Zero();
 	const bool isPeriodic = scene->isPeriodic;
 	FOREACH(const shared_ptr<Interaction>&I, *scene->interactions){
@@ -502,4 +507,18 @@ void Shop::growParticle(Body::id_t bodyID, Real multiplier, bool updateMass)
 		if (bodyID==it->second->getId1()) contact->refR1 = rad;
 		else contact->refR2 = rad;
 	}
+}
+
+py::tuple Shop::aabbExtrema(Real cutoff, bool centers){
+	if(cutoff<0. || cutoff>1.) throw invalid_argument("Cutoff must be >=0 and <=1.");
+	Real inf=std::numeric_limits<Real>::infinity();
+	Vector3r minimum(inf,inf,inf),maximum(-inf,-inf,-inf);
+	FOREACH(const shared_ptr<Body>& b, *Omega::instance().getScene()->bodies){
+		shared_ptr<Sphere> s=YADE_PTR_DYN_CAST<Sphere>(b->shape); if(!s) continue;
+		Vector3r rrr(s->radius,s->radius,s->radius);
+		minimum=minimum.cwiseMin(b->state->pos-(centers?Vector3r::Zero():rrr));
+		maximum=maximum.cwiseMax(b->state->pos+(centers?Vector3r::Zero():rrr));
+	}
+	Vector3r dim=maximum-minimum;
+	return py::make_tuple(Vector3r(minimum+.5*cutoff*dim),Vector3r(maximum-.5*cutoff*dim));
 }

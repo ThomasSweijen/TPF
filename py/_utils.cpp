@@ -1,39 +1,9 @@
-#include<yade/pkg/dem/Shop.hpp>
-#include<yade/core/Scene.hpp>
-#include<yade/core/Omega.hpp>
-#include<yade/pkg/dem/ScGeom.hpp>
-#include<yade/pkg/dem/DemXDofGeom.hpp>
-#include<yade/pkg/common/Facet.hpp>
-#include<yade/pkg/dem/Tetra.hpp>
-#include<yade/pkg/common/Sphere.hpp>
-#include<yade/pkg/common/NormShearPhys.hpp>
-#include<yade/lib/computational-geometry/Hull2d.hpp>
-#include<yade/lib/pyutil/doc_opts.hpp>
-#include<yade/pkg/dem/ViscoelasticPM.hpp>
-
-#include<numpy/ndarrayobject.h>
-
-namespace py = boost::python;
+#include <py/_utils.hpp>
 
 bool isInBB(Vector3r p, Vector3r bbMin, Vector3r bbMax){return p[0]>bbMin[0] && p[0]<bbMax[0] && p[1]>bbMin[1] && p[1]<bbMax[1] && p[2]>bbMin[2] && p[2]<bbMax[2];}
 
-/* \todo implement groupMask */
-py::tuple aabbExtrema(Real cutoff=0.0, bool centers=false){
-	if(cutoff<0. || cutoff>1.) throw invalid_argument("Cutoff must be >=0 and <=1.");
-	Real inf=std::numeric_limits<Real>::infinity();
-	Vector3r minimum(inf,inf,inf),maximum(-inf,-inf,-inf);
-	FOREACH(const shared_ptr<Body>& b, *Omega::instance().getScene()->bodies){
-		shared_ptr<Sphere> s=YADE_PTR_DYN_CAST<Sphere>(b->shape); if(!s) continue;
-		Vector3r rrr(s->radius,s->radius,s->radius);
-		minimum=minimum.cwiseMin(b->state->pos-(centers?Vector3r::Zero():rrr));
-		maximum=maximum.cwiseMax(b->state->pos+(centers?Vector3r::Zero():rrr));
-	}
-	Vector3r dim=maximum-minimum;
-	return py::make_tuple(Vector3r(minimum+.5*cutoff*dim),Vector3r(maximum-.5*cutoff*dim));
-}
-
-py::tuple negPosExtremeIds(int axis, Real distFactor=1.1){
-	py::tuple extrema=aabbExtrema();
+py::tuple negPosExtremeIds(int axis, Real distFactor){
+	py::tuple extrema=Shop::aabbExtrema();
 	Real minCoord=py::extract<double>(extrema[0][axis])(),maxCoord=py::extract<double>(extrema[1][axis])();
 	py::list minIds,maxIds;
 	FOREACH(const shared_ptr<Body>& b, *Omega::instance().getScene()->bodies){
@@ -43,9 +13,8 @@ py::tuple negPosExtremeIds(int axis, Real distFactor=1.1){
 	}
 	return py::make_tuple(minIds,maxIds);
 }
-BOOST_PYTHON_FUNCTION_OVERLOADS(negPosExtremeIds_overloads,negPosExtremeIds,1,2);
 
-py::tuple coordsAndDisplacements(int axis,py::tuple Aabb=py::tuple()){
+py::tuple coordsAndDisplacements(int axis,py::tuple Aabb){
 	Vector3r bbMin(Vector3r::Zero()), bbMax(Vector3r::Zero()); bool useBB=py::len(Aabb)>0;
 	if(useBB){bbMin=py::extract<Vector3r>(Aabb[0])();bbMax=py::extract<Vector3r>(Aabb[1])();}
 	py::list retCoord,retDispl;
@@ -71,7 +40,7 @@ void setRefSe3(){
 Real PWaveTimeStep(){return Shop::PWaveTimeStep();};
 Real RayleighWaveTimeStep(){return Shop::RayleighWaveTimeStep();};
 
-py::tuple interactionAnglesHistogram(int axis, int mask=0, size_t bins=20, py::tuple aabb=py::tuple(), Real minProjLen=1e-6){
+py::tuple interactionAnglesHistogram(int axis, int mask, size_t bins, py::tuple aabb, Real minProjLen){
 	if(axis<0||axis>2) throw invalid_argument("Axis must be from {0,1,2}=x,y,z.");
 	Vector3r bbMin(Vector3r::Zero()), bbMax(Vector3r::Zero()); bool useBB=py::len(aabb)>0; if(useBB){bbMin=py::extract<Vector3r>(aabb[0])();bbMax=py::extract<Vector3r>(aabb[1])();}
 	Real binStep=Mathr::PI/bins; int axis2=(axis+1)%3, axis3=(axis+2)%3;
@@ -94,9 +63,8 @@ py::tuple interactionAnglesHistogram(int axis, int mask=0, size_t bins=20, py::t
 	for(size_t i=0; i<(size_t)bins; i++){ val.append(cummProj[i]); binMid.append(i*binStep);}
 	return py::make_tuple(binMid,val);
 }
-BOOST_PYTHON_FUNCTION_OVERLOADS(interactionAnglesHistogram_overloads,interactionAnglesHistogram,1,4);
 
-py::tuple bodyNumInteractionsHistogram(py::tuple aabb=py::tuple()){
+py::tuple bodyNumInteractionsHistogram(py::tuple aabb){
 	Vector3r bbMin(Vector3r::Zero()), bbMax(Vector3r::Zero()); bool useBB=py::len(aabb)>0; if(useBB){bbMin=py::extract<Vector3r>(aabb[0])();bbMax=py::extract<Vector3r>(aabb[1])();}
 	const shared_ptr<Scene>& rb=Omega::instance().getScene();
 	vector<int> bodyNumIntr; bodyNumIntr.resize(rb->bodies->size(),0);
@@ -133,7 +101,6 @@ py::tuple bodyNumInteractionsHistogram(py::tuple aabb=py::tuple()){
 	}
 	return py::make_tuple(num,count);
 }
-BOOST_PYTHON_FUNCTION_OVERLOADS(bodyNumInteractionsHistogram_overloads,bodyNumInteractionsHistogram,0,1);
 
 Vector3r inscribedCircleCenter(const Vector3r& v0, const Vector3r& v1, const Vector3r& v2)
 {
@@ -204,7 +171,7 @@ Real sumForces(py::list ids, const Vector3r& direction){
 /* Sum force acting on facets given by their ids in the sense of their respective normals.
    If axis is given, it will sum forces perpendicular to given axis only (not the the facet normals).
 */
-Real sumFacetNormalForces(vector<Body::id_t> ids, int axis=-1){
+Real sumFacetNormalForces(vector<Body::id_t> ids, int axis){
 	shared_ptr<Scene> rb=Omega::instance().getScene(); rb->forces.sync();
 	Real ret=0;
 	FOREACH(const Body::id_t id, ids){
@@ -339,20 +306,19 @@ Vector3r forcesOnCoordPlane(Real coord, int axis){
 }
 
 
-py::tuple spiralProject(const Vector3r& pt, Real dH_dTheta, int axis=2, Real periodStart=std::numeric_limits<Real>::quiet_NaN(), Real theta0=0){
+py::tuple spiralProject(const Vector3r& pt, Real dH_dTheta, int axis, Real periodStart, Real theta0){
 	Real r,h,theta;
 	boost::tie(r,h,theta)=Shop::spiralProject(pt,dH_dTheta,axis,periodStart,theta0);
 	return py::make_tuple(py::make_tuple(r,h),theta);
 }
-//BOOST_PYTHON_FUNCTION_OVERLOADS(spiralProject_overloads,spiralProject,2,5);
 
 shared_ptr<Interaction> Shop__createExplicitInteraction(Body::id_t id1, Body::id_t id2){ return Shop::createExplicitInteraction(id1,id2,/*force*/true);}
 
 Real Shop__unbalancedForce(bool useMaxForce /*false by default*/){return Shop::unbalancedForce(useMaxForce);}
 py::tuple Shop__totalForceInVolume(){Real stiff; Vector3r ret=Shop::totalForceInVolume(stiff); return py::make_tuple(ret,stiff); }
-Real Shop__getSpheresVolume(int mask=-1){ return Shop::getSpheresVolume(Omega::instance().getScene(), mask=mask);}
-Real Shop__getSpheresMass(int mask=-1){ return Shop::getSpheresMass(Omega::instance().getScene(), mask=mask);}
-py::object Shop__kineticEnergy(bool findMaxId=false){
+Real Shop__getSpheresVolume(int mask){ return Shop::getSpheresVolume(Omega::instance().getScene(), mask=mask);}
+Real Shop__getSpheresMass(int mask){ return Shop::getSpheresMass(Omega::instance().getScene(), mask=mask);}
+py::object Shop__kineticEnergy(bool findMaxId){
 	if(!findMaxId) return py::object(Shop::kineticEnergy());
 	Body::id_t maxId;
 	Real E=Shop::kineticEnergy(NULL,&maxId);
@@ -374,16 +340,16 @@ Real maxOverlapRatio(){
 	return ret;
 }
 
-Real Shop__getPorosity(Real volume=-1){ return Shop::getPorosity(Omega::instance().getScene(),volume); }
-Real Shop__getVoxelPorosity(int resolution=200, Vector3r start=Vector3r(0,0,0),Vector3r end=Vector3r(0,0,0)){ return Shop::getVoxelPorosity(Omega::instance().getScene(),resolution,start,end); }
+Real Shop__getPorosity(Real volume){ return Shop::getPorosity(Omega::instance().getScene(),volume); }
+Real Shop__getVoxelPorosity(int resolution, Vector3r start,Vector3r end){ return Shop::getVoxelPorosity(Omega::instance().getScene(),resolution,start,end); }
 
 //Matrix3r Shop__stressTensorOfPeriodicCell(bool smallStrains=false){return Shop::stressTensorOfPeriodicCell(smallStrains);}
-py::tuple Shop__fabricTensor(bool splitTensor=false, bool revertSign=false, Real thresholdForce=NaN){return Shop::fabricTensor(splitTensor,revertSign,thresholdForce);}
-py::tuple Shop__normalShearStressTensors(bool compressionPositive=false, bool splitNormalTensor=false, Real thresholdForce=NaN){return Shop::normalShearStressTensors(compressionPositive,splitNormalTensor,thresholdForce);}
+py::tuple Shop__fabricTensor(bool splitTensor, bool revertSign, Real thresholdForce){return Shop::fabricTensor(splitTensor,revertSign,thresholdForce);}
+py::tuple Shop__normalShearStressTensors(bool compressionPositive, bool splitNormalTensor, Real thresholdForce){return Shop::normalShearStressTensors(compressionPositive,splitNormalTensor,thresholdForce);}
 
 py::list Shop__getStressLWForEachBody(){return Shop::getStressLWForEachBody();}
 
-py::list Shop__getBodyIdsContacts(Body::id_t bodyID=-1){return Shop::getBodyIdsContacts(bodyID);}
+py::list Shop__getBodyIdsContacts(Body::id_t bodyID){return Shop::getBodyIdsContacts(bodyID);}
 
 Real shiftBodies(py::list ids, const Vector3r& shift){
 	shared_ptr<Scene> rb=Omega::instance().getScene();
@@ -396,7 +362,7 @@ Real shiftBodies(py::list ids, const Vector3r& shift){
 	return 1;
 }
 
-void Shop__calm(int mask=-1){ return Shop::calm(Omega::instance().getScene(), mask=mask);}
+void Shop__calm(int mask){ return Shop::calm(Omega::instance().getScene(), mask=mask);}
 
 void setNewVerticesOfFacet(const shared_ptr<Body>& b, const Vector3r& v1, const Vector3r& v2, const Vector3r& v3) {
 	Vector3r center = inscribedCircleCenter(v1,v2,v3);
@@ -455,7 +421,7 @@ BOOST_PYTHON_MODULE(_utils){
 	py::def("getSpheresMass",Shop__getSpheresMass,(py::arg("mask")=-1),"Compute the total mass of spheres in the simulation (might crash for now if dynamic bodies are not spheres), mask parameter is considered");
 	py::def("porosity",Shop__getPorosity,(py::arg("volume")=-1),"Compute packing porosity $\\frac{V-V_s}{V}$ where $V$ is overall volume and $V_s$ is volume of spheres.\n\n:param float volume: overall volume $V$. For periodic simulations, current volume of the :yref:`Cell` is used. For aperiodic simulations, the value deduced from utils.aabbDim() is used. For compatibility reasons, positive values passed by the user are also accepted in this case.\n");
 	py::def("voxelPorosity",Shop__getVoxelPorosity,(py::arg("resolution")=200,py::arg("start")=Vector3r(0,0,0),py::arg("end")=Vector3r(0,0,0)),"Compute packing porosity $\\frac{V-V_v}{V}$ where $V$ is a specified volume (from start to end) and $V_v$ is volume of voxels that fall inside any sphere. The calculation method is to divide whole volume into a dense grid of voxels (at given resolution), and count the voxels that fall inside any of the spheres. This method allows one to calculate porosity in any given sub-volume of a whole sample. It is properly excluding part of a sphere that does not fall inside a specified volume.\n\n:param int resolution: voxel grid resolution, values bigger than resolution=1600 require a 64 bit operating system, because more than 4GB of RAM is used, a resolution=800 will use 500MB of RAM.\n:param Vector3 start: start corner of the volume.\n:param Vector3 end: end corner of the volume.\n");
-	py::def("aabbExtrema",aabbExtrema,(py::arg("cutoff")=0.0,py::arg("centers")=false),"Return coordinates of box enclosing all bodies\n\n:param bool centers: do not take sphere radii in account, only their centroids\n:param float∈〈0…1〉 cutoff: relative dimension by which the box will be cut away at its boundaries.\n\n\n:return: (lower corner, upper corner) as (Vector3,Vector3)\n\n");
+	py::def("aabbExtrema",Shop::aabbExtrema,(py::arg("cutoff")=0.0,py::arg("centers")=false),"Return coordinates of box enclosing all bodies\n\n:param bool centers: do not take sphere radii in account, only their centroids\n:param float∈〈0…1〉 cutoff: relative dimension by which the box will be cut away at its boundaries.\n\n\n:return: (lower corner, upper corner) as (Vector3,Vector3)\n\n");
 	py::def("ptInAABB",isInBB,"Return True/False whether the point p is within box given by its min and max corners");
 	py::def("negPosExtremeIds",negPosExtremeIds,negPosExtremeIds_overloads(py::args("axis","distFactor"),"Return list of ids for spheres (only) that are on extremal ends of the specimen along given axis; distFactor multiplies their radius so that sphere that do not touch the boundary coordinate can also be returned."));
 	py::def("approxSectionArea",approxSectionArea,"Compute area of convex hull when when taking (swept) spheres crossing the plane at coord, perpendicular to axis.");
@@ -487,7 +453,7 @@ BOOST_PYTHON_MODULE(_utils){
 	py::def("normalShearStressTensors",Shop__normalShearStressTensors,(py::args("compressionPositive")=false,py::args("splitNormalTensor")=false,py::args("thresholdForce")=NaN),"Compute overall stress tensor of the periodic cell decomposed in 2 parts, one contributed by normal forces, the other by shear forces. The formulation can be found in [Thornton2000]_, eq. (3):\n\n.. math:: \\tens{\\sigma}_{ij}=\\frac{2}{V}\\sum R N \\vec{n}_i \\vec{n}_j+\\frac{2}{V}\\sum R T \\vec{n}_i\\vec{t}_j\n\nwhere $V$ is the cell volume, $R$ is \"contact radius\" (in our implementation, current distance between particle centroids), $\\vec{n}$ is the normal vector, $\\vec{t}$ is a vector perpendicular to $\\vec{n}$, $N$ and $T$ are norms of normal and shear forces.\n\n:param bool splitNormalTensor: if true the function returns normal stress tensor split into two parts according to the two subnetworks of strong an weak forces.\n\n:param Real thresholdForce: threshold value according to which the normal stress tensor can be split (e.g. a zero value would make distinction between tensile and compressive forces).");
 	py::def("fabricTensor",Shop__fabricTensor,(py::args("splitTensor")=false,py::args("revertSign")=false,py::args("thresholdForce")=NaN),"Compute the fabric tensor of the periodic cell. The original paper can be found in [Satake1982]_.\n\n:param bool splitTensor: split the fabric tensor into two parts related to the strong and weak contact forces respectively.\n\n:param bool revertSign: it must be set to true if the contact law's convention takes compressive forces as positive.\n\n:param Real thresholdForce: if the fabric tensor is split into two parts, a threshold value can be specified otherwise the mean contact force is considered by default. It is worth to note that this value has a sign and the user needs to set it according to the convention adopted for the contact law. To note that this value could be set to zero if one wanted to make distinction between compressive and tensile forces.");
 	py::def("bodyStressTensors",Shop__getStressLWForEachBody,"Compute and return a table with per-particle stress tensors. Each tensor represents the average stress in one particle, obtained from the contour integral of applied load as detailed below. This definition is considering each sphere as a continuum. It can be considered exact in the context of spheres at static equilibrium, interacting at contact points with negligible volume changes of the solid phase (this last assumption is not restricting possible deformations and volume changes at the packing scale).\n\nProof: \n\nFirst, we remark the identity:  $\\sigma_{ij}=\\delta_{ik}\\sigma_{kj}=x_{i,k}\\sigma_{kj}=(x_{i}\\sigma_{kj})_{,k}-x_{i}\\sigma_{kj,k}$.\n\nAt equilibrium, the divergence of stress is null: $\\sigma_{kj,k}=\\vec{0}$. Consequently, after divergence theorem: $\\frac{1}{V}\\int_V \\sigma_{ij}dV = \\frac{1}{V}\\int_V (x_{i}\\sigma_{kj})_{,k}dV = \\frac{1}{V}\\int_{\\partial V}x_i\\sigma_{kj}n_kdS = \\frac{1}{V}\\sum_bx_i^bf_j^b$.\n\nThe last equality is implicitely based on the representation of external loads as Dirac distributions whose zeros are the so-called *contact points*: 0-sized surfaces on which the *contact forces* are applied, located at $x_i$ in the deformed configuration.\n\nA weighted average of per-body stresses will give the average stress inside the solid phase. There is a simple relation between the stress inside the solid phase and the stress in an equivalent continuum in the absence of fluid pressure. For porosity $n$, the relation reads: $\\sigma_{ij}^{equ.}=(1-n)\\sigma_{ij}^{solid}$.\n\nThis last relation may not be very useful if porosity is not homogeneous. If it happens, one can define the equivalent bulk stress a the particles scale by assigning a volume to each particle. This volume can be obtained from :yref:`TesselationWrapper` (see e.g. [Catalano2014a]_)");
-	py::def("getStress",Shop::getStress,(py::args("volume")=0),"Compute and return Love-Weber stress tensor:\n\n $\\sigma_{ij}=\\frac{1}{V}\\sum_b f_i^b l_j^b$, where the sum is over all interactions, with $f$ the contact force and $l$ the branch vector (joining centers of the bodies). Stress is negativ for repulsive contact forces, i.e. compression. $V$ can be passed to the function. If it is not, it will be equal to one in non-periodic cases, or equal to the volume of the cell in periodic cases.");
+	py::def("getStress",Shop::getStress,(py::args("volume")=0),"Compute and return Love-Weber stress tensor:\n\n $\\sigma_{ij}=\\frac{1}{V}\\sum_b f_i^b l_j^b$, where the sum is over all interactions, with $f$ the contact force and $l$ the branch vector (joining centers of the bodies). Stress is negativ for repulsive contact forces, i.e. compression. $V$ can be passed to the function. If it is not, it will be equal to the volume of the cell in periodic cases, or to the one deduced from utils.aabbDim() in non-periodic cases.");
 	py::def("getCapillaryStress",Shop::getCapillaryStress,(py::args("volume")=0,py::args("mindlin")=false),"Compute and return Love-Weber capillary stress tensor:\n\n $\\sigma^{cap}_{ij}=\\frac{1}{V}\\sum_b l_i^b f^{cap,b}_j$, where the sum is over all interactions, with $l$ the branch vector (joining centers of the bodies) and $f^{cap}$ is the capillary force. $V$ can be passed to the function. If it is not, it will be equal to one in non-periodic cases, or equal to the volume of the cell in periodic cases. Only the CapillaryPhys interaction type is supported presently. Using this function with physics MindlinCapillaryPhys needs to pass True as second argument.");
 	py::def("getBodyIdsContacts",Shop__getBodyIdsContacts,(py::args("bodyID")=0),"Get a list of body-ids, which contacts the given body.");
 	py::def("maxOverlapRatio",maxOverlapRatio,"Return maximum overlap ration in interactions (with :yref:`ScGeom`) of two :yref:`spheres<Sphere>`. The ratio is computed as $\\frac{u_N}{2(r_1 r_2)/r_1+r_2}$, where $u_N$ is the current overlap distance and $r_1$, $r_2$ are radii of the two spheres in contact.");

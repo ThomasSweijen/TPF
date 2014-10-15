@@ -6,16 +6,13 @@
 *  GNU General Public License v2 or later. See file LICENSE for details. *
 *************************************************************************/
 #ifdef FLOW_ENGINE
+#include "TwoPhaseFlowEngine.hpp"
 
 //keep this #ifdef for commited versions unless you really have stable version that should be compiled by default
 //it will save compilation time for everyone else
 //when you want it compiled, you can pass -DDFNFLOW to cmake, or just uncomment the following line
-// #define UNSATURATED_FLOW
-#ifdef UNSATURATED_FLOW
+#ifdef TWOPHASEFLOW
 
-#define TWOPHASEFLOW
-#include "TwoPhaseFlowEngine.hpp"
-// #include "FlowEngine_TwoPhaseFlowEngineT.hpp"
 
 // /// We can add data to the Info types by inheritance
 // class UnsatCellInfo : public FlowCellInfo_UnsaturatedEngineT {
@@ -173,7 +170,7 @@ void UnsaturatedEngine::testFunction()
 		setPositionsBuffer(true);//copy sphere positions in a buffer...
 		buildTriangulation(bndCondValue[2],*solver);//create a triangulation and initialize pressure in the elements (connecting with W-reservoir), everything will be contained in "solver"
 		initializeReservoirs();
-		initializeCellIndex();//initialize cell index
+// 		initializeCellIndex();//initialize cell index
 		computePoreThroatRadius();//save all pore radii before invade
 		computeTotalCellVolume();//save total volume of porous medium, considering different invading boundaries condition (isInvadeBoundary==True or False), aiming to calculate specific interfacial area.
 		computePoreBodyVolume();//save capillary volume of all cells, for fast calculating saturation
