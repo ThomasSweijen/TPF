@@ -246,7 +246,7 @@ void SoluteFlowEngine::imbibitionPoreFunction()
       for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
  	  if(cell->info().hasInterface == true){
  	    if(Rcp > cell->info().poreBodyRadius){
-	      active = true; //Check bool for the iterator
+// 	      active = true; //Check bool for the iterator
  	      cell->info().hasInterface = false;
  	      cell ->info().saturation = 1.0; //NOTE(Thomas): include residual liquid bridge
  	      
@@ -325,7 +325,7 @@ void SoluteFlowEngine::checkConnectivityNetwork()
        if(cell -> info().isNWRes == true){
  	for(unsigned ngb=0;ngb<4;ngb++){
  	  if(cell->neighbor(ngb)->info().saturation == 0.0){
- 	    networkactive = true;
+ 	    networkactive = true; //NOTE error during imbibition!
  	    cell->neighbor(ngb)->info().isNWRes = true;
  	  }
  	}
