@@ -13,7 +13,7 @@
 
 #define _USE_MATH_DEFINES
 
-YADE_PLUGIN(/* self-contained in hpp: */ (Polyhedra) (PolyhedraGeom) (Bo1_Polyhedra_Aabb) (PolyhedraPhys) (PolyhedraMat) (Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys) (Law2_PolyhedraGeom_PolyhedraPhys_Volumetric)
+YADE_PLUGIN(/* self-contained in hpp: */ (Polyhedra) (PolyhedraGeom) (Bo1_Polyhedra_Aabb) (PolyhedraPhys) (PolyhedraMat) (Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys) (Ip2_FrictMat_PolyhedraMat_FrictPhys) (Law2_PolyhedraGeom_PolyhedraPhys_Volumetric)
 	/* some code in cpp (this file): */ 
 	#ifdef YADE_OPENGL
 		(Gl1_Polyhedra) (Gl1_PolyhedraGeom) (Gl1_PolyhedraPhys)
@@ -97,7 +97,7 @@ void Polyhedra::Initialize(){
 	std::transform( P.points_begin(), P.points_end(), P.points_begin(), t_trans);	
 
 	//compute inertia	
-	double vtet;
+	Real vtet;
 	Vector3r ctet;
 	Matrix3r Itet1, Itet2;
 	Matrix3r inertia_tensor(Matrix3r::Zero());
@@ -126,8 +126,8 @@ void Polyhedra::Initialize(){
 		// I_new = eigenvalues on diagonal
 		// set positove direction of vectors - otherwise reloading does not work
 		Matrix3r sign(Matrix3r::Zero()); 
-		double max_v_signed = I_rot(0,0);
-		double max_v = std::abs(I_rot(0,0));
+		Real max_v_signed = I_rot(0,0);
+		Real max_v = std::abs(I_rot(0,0));
 		if (max_v < std::abs(I_rot(1,0))) {max_v_signed = I_rot(1,0); max_v = std::abs(I_rot(1,0));} 
 		if (max_v < std::abs(I_rot(2,0))) {max_v_signed = I_rot(2,0); max_v = std::abs(I_rot(2,0));} 
 		sign(0,0) = max_v_signed/max_v;
@@ -175,11 +175,11 @@ void Polyhedra::GenerateRandomGeometry(){
 	int iter = 0; 
 	bool isOK;
 	//fill box 5x5x5 with randomly located nuclei with restricted minimal mutual distance 0.75 which gives approximate mean mutual distance 1;
-	double dist_min2 = 0.75*0.75;
+	Real dist_min2 = 0.75*0.75;
 	while(iter<500){
 		isOK = true;
 		iter++;
-		trial = CGALpoint(double(rand())/RAND_MAX*5.+2.5,double(rand())/RAND_MAX*5.+2.5,double(rand())/RAND_MAX*5.+2.5);
+		trial = CGALpoint(Real(rand())/RAND_MAX*5.+2.5,Real(rand())/RAND_MAX*5.+2.5,Real(rand())/RAND_MAX*5.+2.5);
 		for(int i=0;i< (int) nuclei.size();i++) {
 			isOK = pow(nuclei[i].x()-trial.x(),2)+pow(nuclei[i].y()-trial.y(),2)+pow(nuclei[i].z()-trial.z(),2) > dist_min2;
 			if (!isOK) break;
@@ -205,7 +205,7 @@ void Polyhedra::GenerateRandomGeometry(){
 
 
 	//resize and rotate the voronoi cell
-	Quaternionr Rot(double(rand())/RAND_MAX,double(rand())/RAND_MAX,double(rand())/RAND_MAX,double(rand())/RAND_MAX);
+	Quaternionr Rot(Real(rand())/RAND_MAX,Real(rand())/RAND_MAX,Real(rand())/RAND_MAX,Real(rand())/RAND_MAX);
 	Rot.normalize();
 	for(int i=0; i< (int) v.size();i++) {
 		v[i] = Rot*(Vector3r(v[i][0]*size[0],v[i][1]*size[1],v[i][2]*size[2]));
@@ -218,6 +218,20 @@ void Polyhedra::GenerateRandomGeometry(){
 		seed = rand();
 		GenerateRandomGeometry();
 	}
+}
+
+//**************************************************************************
+/* Get polyhdral surfaces */
+vector<vector<int>> Polyhedra::GetSurfaces() const {
+	vector<vector<int>> ret(P.size_of_facets());
+	int i=0;
+	for (Polyhedron::Facet_const_iterator f = P.facets_begin(); f != P.facets_end(); f++, i++){
+		Polyhedron::Halfedge_around_facet_const_circulator h=f->facet_begin();
+		do {
+			ret[i].push_back(std::distance(P.vertices_begin(), h->vertex()));
+		} while (++h != f->facet_begin());
+	}
+	return ret;
 }
 
 
@@ -384,15 +398,21 @@ void Ip2_PolyhedraMat_PolyhedraMat_PolyhedraPhys::go( const shared_ptr<Material>
 	const shared_ptr<PolyhedraMat>& mat2 = YADE_PTR_CAST<PolyhedraMat>(b2);
 	interaction->phys = shared_ptr<PolyhedraPhys>(new PolyhedraPhys());
 	const shared_ptr<PolyhedraPhys>& contactPhysics = YADE_PTR_CAST<PolyhedraPhys>(interaction->phys);
-	Real Kna 	= mat1->Kn;
-	Real Knb 	= mat2->Kn;
-	Real Ksa 	= mat1->Ks;
-	Real Ksb 	= mat2->Ks;
+	Real Kna 	= mat1->young;
+	Real Knb 	= mat2->young;
+	Real Ksa 	= mat1->young*mat1->poisson;
+	Real Ksb 	= mat2->young*mat2->poisson;
 	Real frictionAngle = std::min(mat1->frictionAngle,mat2->frictionAngle);	
         contactPhysics->tangensOfFrictionAngle = std::tan(frictionAngle);
 	contactPhysics->kn = Kna*Knb/(Kna+Knb);
 	contactPhysics->ks = Ksa*Ksb/(Ksa+Ksb);
 };
+
+void Ip2_FrictMat_PolyhedraMat_FrictPhys::go(const shared_ptr<Material>& pp1, const shared_ptr<Material>& pp2, const shared_ptr<Interaction>& interaction){
+	const shared_ptr<FrictMat>& mat1 = YADE_PTR_CAST<FrictMat>(pp1);
+	const shared_ptr<PolyhedraMat>& mat2 = YADE_PTR_CAST<PolyhedraMat>(pp2);
+	Ip2_FrictMat_FrictMat_FrictPhys().go(mat1,mat2,interaction);
+}
 
 //**************************************************************************************
 #if 1
@@ -432,7 +452,8 @@ bool Law2_PolyhedraGeom_PolyhedraPhys_Volumetric::go(shared_ptr<IGeom>& ig, shar
 			
 		//zero penetration depth means no interaction force
 		if(!(contactGeom->equivalentPenetrationDepth > 1E-18) || !(contactGeom->penetrationVolume > 0)) {phys->normalForce = Vector3r(0.,0.,0.); phys->shearForce = Vector3r(0.,0.,0.); return true;} 
-		Vector3r normalForce=contactGeom->normal*contactGeom->penetrationVolume*phys->kn;
+		Real prop = std::pow(contactGeom->penetrationVolume,volumePower);
+		Vector3r normalForce=contactGeom->normal*prop*phys->kn;
 
 		//shear force: in case the polyhdras are separated and come to contact again, one should not use the previous shear force
 		if (contactGeom->isShearNew)
