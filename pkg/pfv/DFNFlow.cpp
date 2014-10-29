@@ -125,7 +125,7 @@ public:
 };
 
 
-typedef TemplateFlowEngine_DFNFlowEngineT<DFNCellInfo,DFNVertexInfo, DFNTesselation> DFNFlowEngineT;
+typedef TemplateFlowEngine_DFNFlowEngineT<DFNCellInfo,DFNVertexInfo, DFNTesselation,DFNBoundingSphere> DFNFlowEngineT;
 REGISTER_SERIALIZABLE(DFNFlowEngineT);
 YADE_PLUGIN((DFNFlowEngineT));
 
