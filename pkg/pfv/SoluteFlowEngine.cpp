@@ -70,6 +70,7 @@ class SoluteFlowEngine : public TwoPhaseFlowEngine
 // 		void copySaturationTEMP();
 // 		void inscribedCircle();
 // 		void staticIterator();
+		double getRelPerm();
 		void InitializeScenario();
  		void imbibitionFunction();
  		void InsertBoundaryConditions();
@@ -93,7 +94,7 @@ class SoluteFlowEngine : public TwoPhaseFlowEngine
 		((bool,active,true,,"Is something still happening?"))
 		((bool,makeMovie,true,,"Make a movie of the different steps to reach equilibrium?"))
 		((bool,drainage,true,,"Do we have drainage or nor?"))
-
+		((vector<double>, bndCondTPFValue, vector<double>(6,0),,"Boundary conditions for two-phase flow engine"))
 		,,,
  		.def("TPFaction",&SoluteFlowEngine::TPFaction,"Activate Two Phase Flow Engine")
 //  		.def("PorethroatSaturation",&SoluteFlowEngine::PorethroatSaturation,(boost::python::arg("Pc"),boost::python::arg("ID"),boost::python::arg("facet")),"Calculate swelling of liquid bridge")
@@ -106,7 +107,9 @@ class SoluteFlowEngine : public TwoPhaseFlowEngine
 // 		.def("getInsideEqSphere",&SoluteFlowEngine::getInsideEqSphere,"Get equivalent pore volume")
  		.def("InitializeScenario",&SoluteFlowEngine::InitializeScenario,"Reset Initial conditions")
 // 		.def("InsertBoundaryConditions",&SoluteFlowEngine::InsertBoundaryConditions,"Insert the boundary conditions into vectors.")
-// 		.def("checkConnectivityNetwork",&SoluteFlowEngine::checkConnectivityNetwork,"Reset Initial conditions")
+ 		.def("checkConnectivityNetwork",&SoluteFlowEngine::checkConnectivityNetwork,"Reset Initial conditions")
+		.def("getRelPerm",&SoluteFlowEngine::getRelPerm,"Calculate the permeability of the W phase")
+
 
 
 	
@@ -119,6 +122,7 @@ REGISTER_SERIALIZABLE(SoluteFlowEngine);
 
 void SoluteFlowEngine::TPFaction()
 {
+  unsigned int i = 0;
   if(first)
   {
     cout << endl << "Generate a mesh and initialize volumes";
@@ -127,17 +131,19 @@ void SoluteFlowEngine::TPFaction()
   }
   active = true;
   if(isPhaseTrapped == false){resetNetwork();}
-  cout << endl << "NW Pressure " << bndCondValue[findNWReservoir()];
+  cout << endl << "NW Pressure " << bndCondTPFValue[3];
   InsertBoundaryConditions();
   while(active)
   {
+    i = i+1;
     checkConnectivityNetwork();
     active = false;
     if(drainage){drainageFunction();}
     if(drainage == false){
       imbibitionFunction();
       imbibitionPoreFunction();  
-    }  
+    }
+    if(i > 200){active =false;}
   }
 }
 
@@ -162,13 +168,13 @@ void SoluteFlowEngine::initialSaturation()
     FiniteCellsIterator cellEnd = tri.finite_cells_end();
     for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
  	if(initialWetting == true){ 
-	    cell->info().p() = bndCondValue[findWReservoir()];
+	    cell->info().p() = bndCondTPFValue[2];
  	    cell->info().saturation = 1.0;
  	    cell->info().isWRes = true;
  	    cell->info().isNWRes = false;
 	}
  	if(initialWetting == false){
-	    cell->info().p() =  bndCondValue[findNWReservoir()];
+	    cell->info().p() =  bndCondTPFValue[3];
  	    cell->info().saturation = 0.0;
  	    cell->info().isWRes = false;
  	    cell->info().isNWRes = true;
@@ -176,6 +182,22 @@ void SoluteFlowEngine::initialSaturation()
     }
 }
 
+double SoluteFlowEngine::getRelPerm()
+{
+  
+     RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
+     FiniteCellsIterator cellEnd = tri.finite_cells_end();
+     for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
+       if(cell->info().isWRes == false){
+ 	blockCell(cell->info().id,0.0);
+       }
+
+       
+     }
+     scene = Omega::instance().getScene().get();
+  
+  return solver->boundaryFlux(3);
+}
 
 void SoluteFlowEngine::InsertBoundaryConditions()
 {
@@ -204,7 +226,7 @@ void SoluteFlowEngine::drainageFunction()
     //Check pore-throat and inscribed circle for drainage.
       double Rcp = 0.0, throatRadius = 0.0;
       double CapillaryPressure = 0.0;
-      CapillaryPressure = bndCondValue[findNWReservoir()] - bndCondValue[findWReservoir()];
+      CapillaryPressure = bndCondTPFValue[3] - bndCondTPFValue[2];
       CappilaryPressureOverall = CapillaryPressure;
       Rcp = surfaceTension / CapillaryPressure;
  	
@@ -237,7 +259,7 @@ void SoluteFlowEngine::imbibitionPoreFunction()
        //Check hanging interface within a pore body
    	double Rcp = 0.0;
  	double CapillaryPressure = 0.0;
- 	     CapillaryPressure = bndCondValue[findNWReservoir()] - bndCondValue[findWReservoir()];
+ 	     CapillaryPressure = bndCondTPFValue[3] - bndCondTPFValue[2];
  	     CappilaryPressureOverall = CapillaryPressure;
  	     Rcp = surfaceTension / CapillaryPressure;
  	     
@@ -263,7 +285,7 @@ void SoluteFlowEngine::imbibitionFunction()
 {
          //Reverse of drainage, and the option to assign hanging interfaces within pore-bodies.
       double Rcp = 0.0, throatRadius = 0.0, CapillaryPressure = 0.0;
-      CapillaryPressure = bndCondValue[findNWReservoir()] - bndCondValue[findWReservoir()];
+      CapillaryPressure = bndCondTPFValue[3] - bndCondTPFValue[2];
       CappilaryPressureOverall = CapillaryPressure;
       Rcp = surfaceTension / CapillaryPressure;
    
@@ -277,7 +299,7 @@ void SoluteFlowEngine::imbibitionFunction()
  	      for (unsigned int ngb=0;ngb<4;ngb++){
  		if((cell->neighbor(ngb)->info().saturation != 1.0) &&(cell->neighbor(ngb)->info().isNWRes == true)&&(cell->info().isWRes == true)){
  		  throatRadius = cell->info().poreThroatRadius[ngb];
- 		    if (throatRadius <= Rcp){
+ 		    if ((throatRadius <= Rcp)&&(cell -> neighbor(ngb)->info().hasInterface == false)){
 		      active = true; //Check bool for the iterator
  		      cell -> neighbor(ngb)->info().hasInterface = true; // A new interface in ngb pore has been created
     
@@ -293,7 +315,7 @@ void SoluteFlowEngine::imbibitionFunction()
 
 void SoluteFlowEngine::checkConnectivityNetwork()
 {
-  cout << " Checking Connectivity";
+  cout << endl << " Checking Connectivity";
    bool networkactive;
    int temp;
    RTriangulation& tri = solver->T[solver->currentTes].Triangulation();
@@ -305,12 +327,12 @@ void SoluteFlowEngine::checkConnectivityNetwork()
       //NOTE(Thomas): Check boundary conditions, may be implementen in insertBoundaryConditions
       for(unsigned vertex=0;vertex<4;vertex++){
       //NW connectivity
-      if(cell->vertex(vertex)->info().id() ==  findNWReservoir())
+      if(cell->vertex(vertex)->info().id() ==  3)
       {
 	 cell -> info().isNWRes = true; 
       }
       //W connectivity
-      if(cell->vertex(vertex)->info().id() ==  findWReservoir())
+      if(cell->vertex(vertex)->info().id() ==  2)
       {
 	 cell -> info().isWRes = true;        
       }
@@ -325,7 +347,7 @@ void SoluteFlowEngine::checkConnectivityNetwork()
        if(cell -> info().isNWRes == true){
  	for(unsigned ngb=0;ngb<4;ngb++){
  	  if(cell->neighbor(ngb)->info().saturation == 0.0){
- 	    networkactive = true; //NOTE error during imbibition!
+ 	    networkactive = true; 
  	    cell->neighbor(ngb)->info().isNWRes = true;
  	  }
  	}
@@ -341,16 +363,16 @@ void SoluteFlowEngine::checkConnectivityNetwork()
        }
      }
      temp = temp+1;
-     if(temp > 10000){networkactive = false;} // put upperlimit for while loop
+     if(temp > 10000){networkactive = false;cout << endl << "error! upper iteration limit for network connectivity achieved";} // put upperlimit for while loop
      //cout << endl << temp;
     }
     
     
-     int Wcount = 0, NWcount = 0;
-     for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
-       if(cell -> info().isNWRes == true){Wcount=Wcount+1;}
-       if(cell -> info().isWRes == true){NWcount=NWcount+1;}
-     }
+//      int Wcount = 0, NWcount = 0;
+//      for (FiniteCellsIterator cell = tri.finite_cells_begin(); cell != cellEnd; cell++) {
+//        if(cell -> info().isNWRes == true){Wcount=Wcount+1;}
+//        if(cell -> info().isWRes == true){NWcount=NWcount+1;}
+//      }
   //cout << "NW " << NWcount << " W "<< Wcount;
  } 
 
@@ -404,8 +426,8 @@ int SoluteFlowEngine::findNWReservoir()
     {
       if (bndCondIsPressure[i] == true)
       {	
-	temp = std::max(temp,bndCondValue[i]);
-	if(temp == bndCondValue[i])
+	temp = std::max(temp,bndCondTPFValue[i]);
+	if(temp == bndCondTPFValue[i])
 	{
 	  A = i;
 	}
@@ -424,8 +446,8 @@ int SoluteFlowEngine::findWReservoir()
     {
       if (bndCondIsPressure[i] == true)
       {	
-	temp = std::min(temp,bndCondValue[i]);
-	if(temp == bndCondValue[i])
+	temp = std::min(temp,bndCondTPFValue[i]);
+	if(temp == bndCondTPFValue[i])
 	{
 	  A = i;
 	}
