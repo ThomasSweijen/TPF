@@ -72,7 +72,7 @@ class TwoPhaseFlowEngine : public TwoPhaseFlowEngineT
 	void computePoreBodyVolume();	
 	void computePoreBodyRadius();
 	void computePoreThroatCircleRadius();
-	void computePoreSatAtInterface(CellHandle cell);
+	double computePoreSatAtInterface(int ID);
 	void computePoreCapillaryPressure(CellHandle cell);
 	void savePhaseVtk(const char* folder);
 	void computePoreThroatRadius();
@@ -84,10 +84,28 @@ class TwoPhaseFlowEngine : public TwoPhaseFlowEngineT
 	
 	//FIXME, needs to trigger initSolver() Somewhere, else changing flow.debug or other similar things after first calculation has no effect
 	//FIXME, I removed indexing cells from inside UnsatEngine (SoluteEngine shouldl be ok (?)) in order to get pressure computed, problem is they are not indexed at all if flow is not calculated
-	void computeOnePhaseFlow() {scene = Omega::instance().getScene().get(); if (!solver) cerr<<"no solver!"<<endl; solver->gaussSeidel(scene->dt);}
+	void computeOnePhaseFlow() {scene = Omega::instance().getScene().get(); if (!solver) cerr<<"no solver!"<<endl; solver->gaussSeidel(scene->dt);solver->computePermeability();initSolver(*solver);}
 	
+	boost::python::list cellporeThroatRadius(unsigned int id){
+	  boost::python::list ids;
+	  if (id>=solver->T[solver->currentTes].cellHandles.size()) {LOG_ERROR("id out of range, max value is "<<solver->T[solver->currentTes].cellHandles.size()); return ids;}
+	  for (unsigned int i=0;i<4;i++) ids.append(solver->T[solver->currentTes].cellHandles[id]->info().poreThroatRadius[i]);
+	return ids;
+	}
+
+	boost::python::list getNeighbors(unsigned int id){
+	  boost::python::list ids;
+	  if (id>=solver->T[solver->currentTes].cellHandles.size()) {LOG_ERROR("id out of range, max value is "<<solver->T[solver->currentTes].cellHandles.size()); return ids;}
+	  for (unsigned int i=0;i<4;i++) ids.append(solver->T[solver->currentTes].cellHandles[id]->neighbor(i)->info().id);
+	return ids;
+	}
+	
+	CELL_SCALAR_GETTER(int,.isFictious,cellIsFictious)
+	CELL_SCALAR_GETTER(bool,.hasInterface,cellHasInterface)
+	CELL_SCALAR_SETTER(bool,.hasInterface,setCellHasInterface)
 	CELL_SCALAR_GETTER(bool,.isWRes,cellIsWRes)
 	CELL_SCALAR_GETTER(bool,.isNWRes,cellIsNWRes)
+	CELL_SCALAR_SETTER(bool,.isNWRes,setCellIsNWRes)
 	CELL_SCALAR_GETTER(Real,.saturation,cellSaturation)
 	CELL_SCALAR_SETTER(Real,.saturation,setCellSaturation)
 
@@ -98,12 +116,21 @@ class TwoPhaseFlowEngine : public TwoPhaseFlowEngineT
 
 	,/*TwoPhaseFlowEngineT()*/,
 	,
+	.def("getCellIsFictious",&TwoPhaseFlowEngine::cellIsFictious,"get an integer to indicate which boundary this is allocated to")
 	.def("savePhaseVtk",&TwoPhaseFlowEngine::savePhaseVtk,(boost::python::arg("folder")="./phaseVtk"),"Save the saturation of local pores in vtk format. Sw(NW-pore)=0, Sw(W-pore)=1. Specify a folder name for output.")
 	.def("getCellIsWRes",&TwoPhaseFlowEngine::cellIsWRes,"get status wrt 'wetting reservoir' state")
+	.def("setCellIsNWRes",&TwoPhaseFlowEngine::setCellIsNWRes,"set status wrt 'wetting reservoir' state")
+	.def("getCellIsFictious",&TwoPhaseFlowEngine::cellIsFictious,"get an integer to indicate which boundary this is allocated to")
+	.def("getPoreThroatRadius",&TwoPhaseFlowEngine::cellporeThroatRadius,"get 4 pore throat radii")
+	.def("getNeighbors",&TwoPhaseFlowEngine::getNeighbors,"get 4 neigboring cells")
+	.def("getCellHasInterface",&TwoPhaseFlowEngine::cellHasInterface,"indicates whether a NW-W interface is present within the cell")
+	.def("setCellHasInterface",&TwoPhaseFlowEngine::setCellHasInterface,"change wheter a cell has a NW-W interface")
 	.def("getCellIsNWRes",&TwoPhaseFlowEngine::cellIsNWRes,"get status wrt 'non-wetting reservoir' state")
 	.def("getCellSaturation",&TwoPhaseFlowEngine::cellSaturation,"get saturation of one pore")
 	.def("setCellSaturation",&TwoPhaseFlowEngine::setCellSaturation,"change saturation of one pore")
 	.def("computeOnePhaseFlow",&TwoPhaseFlowEngine::computeOnePhaseFlow,"compute pressure and fluxes in the W-phase")
+	.def("computePoreSatAtInterface",&TwoPhaseFlowEngine::computePoreSatAtInterface,(boost::python::arg("ID")),"compute pressure and fluxes in the W-phase")
+
 	)
 	DECLARE_LOGGER;
 };

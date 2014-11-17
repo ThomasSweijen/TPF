@@ -50,7 +50,7 @@ class UnsaturatedEngine : public TwoPhaseFlowEngine
 		void updateReservoirs2();
 
 		void saveVtk(const char* folder) {bool initT=solver->noCache; solver->noCache=false; solver->saveVtk(folder); solver->noCache=initT;}
-		void savePhaseVtk(const char* folder);
+		void savePhaseVtk2(const char* folder);
 
 		//record and test functions
 		void checkCellsConnection();
@@ -80,7 +80,7 @@ class UnsaturatedEngine : public TwoPhaseFlowEngine
 					((int, windowsNo, 10,, "Number of genrated windows(or zoomed samples)."))
 					,,,
 					.def("saveVtk",&UnsaturatedEngine::saveVtk,(boost::python::arg("folder")="./VTK"),"Save pressure field in vtk format. Specify a folder name for output.")
-					.def("savePhaseVtk",&UnsaturatedEngine::savePhaseVtk,(boost::python::arg("folder")="./phaseVtk"),"Save phases information in vtk format. W-phase=1, NW-phase=0, which can also be seen as saturation of local pore. Specify a folder name for output.")
+					.def("savePhaseVtk2",&UnsaturatedEngine::savePhaseVtk2,(boost::python::arg("folder")="./phaseVtk"),"Save phases information in vtk format. W-phase=1, NW-phase=0, which can also be seen as saturation of local pore. Specify a folder name for output.")
 					.def("getMinEntryValue",&UnsaturatedEngine::getMinEntryValue,"get the minimum NW entry pressure for the next invade step.")
 					.def("getSaturation",&UnsaturatedEngine::getSaturation,(boost::python::arg("isSideBoundaryIncluded")),"Get saturation of entire packing. If isSideBoundaryIncluded=false (default), the pores of side boundary are excluded in saturation calculating; if isSideBoundaryIncluded=true (only in isInvadeBoundary=true drainage mode), the pores of side boundary are included in saturation calculating.")
 					.def("getSpecificInterfacialArea",&UnsaturatedEngine::getSpecificInterfacialArea,"get specific interfacial area (defined as the amount of fluid-fluid interfacial area per unit volume pf the porous medium).")
@@ -503,7 +503,7 @@ double UnsaturatedEngine::computeCellInterfacialArea(CellHandle cell, int j, dou
     }
 }
 
-void UnsaturatedEngine::savePhaseVtk(const char* folder)
+void UnsaturatedEngine::savePhaseVtk2(const char* folder)
 {
 // 	RTriangulation& Tri = T[solver->noCache?(!currentTes):currentTes].Triangulation();
 	RTriangulation& Tri = solver->T[solver->currentTes].Triangulation();
